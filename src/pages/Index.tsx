@@ -85,13 +85,6 @@ export default function Index() {
             <Card className="p-6 border-border bg-card">
               <h2 className="text-xl font-semibold text-primary mb-6">Transformation Controls</h2>
               
-              <div className="mb-6">
-                <TransformationOrderControls
-                  order={transformOrder}
-                  onOrderChange={setTransformOrder}
-                />
-              </div>
-              
               <div className="space-y-6">
                 <div>
                   <label className="text-sm font-medium text-foreground mb-2 block">
@@ -161,13 +154,20 @@ export default function Index() {
             </Card>
           </div>
 
-          {/* Right Panel - Mathematical Explanation */}
-          <MathExplanation
-            brightness={brightness}
-            contrast={contrast}
-            saturation={saturation}
-            hue={hue}
-          />
+          {/* Right Panel - Pipeline Order & Mathematical Explanation */}
+          <div className="space-y-6">
+            <TransformationOrderControls
+              order={transformOrder}
+              onOrderChange={setTransformOrder}
+            />
+            
+            <MathExplanation
+              brightness={brightness}
+              contrast={contrast}
+              saturation={saturation}
+              hue={hue}
+            />
+          </div>
         </div>
       </div>
     </div>
