@@ -134,9 +134,22 @@ export function MathExplanation({ brightness, contrast, saturation, hue }: MathE
               Matrix form (weighted desaturation):
             </div>
             <div className="text-primary font-mono mt-2 text-xs">
-              [R']   [0.299  0.587  0.114]   [R]<br/>
-              [G'] = [0.299  0.587  0.114] × [G]<br/>
-              [B']   [0.299  0.587  0.114]   [B]
+              {(() => {
+                const s = saturation;
+                const a = (s + 0.299 * (1 - s)).toFixed(3);
+                const b = (s + 0.587 * (1 - s)).toFixed(3);
+                const c = (s + 0.114 * (1 - s)).toFixed(3);
+                const d = (0.299 * (1 - s)).toFixed(3);
+                const e = (0.587 * (1 - s)).toFixed(3);
+                const f = (0.114 * (1 - s)).toFixed(3);
+                return (
+                  <>
+                    <div>[R&apos;]   [{a}  {e}  {f}]   [R]</div>
+                    <div>[G&apos;] = [{d}  {b}  {f}] × [G]</div>
+                    <div>[B&apos;]   [{d}  {e}  {c}]   [B]</div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </TabsContent>
