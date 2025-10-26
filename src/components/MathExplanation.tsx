@@ -161,7 +161,13 @@ export function MathExplanation({ brightness, contrast, saturation, hue }: MathE
                 const a = cosA + (1 - cosA) / 3;
                 const b = 1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA;
                 const c = 1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA;
-                return `[${a.toFixed(3)}  ${b.toFixed(3)}  ${c.toFixed(3)}]\n[${c.toFixed(3)}  ${a.toFixed(3)}  ${b.toFixed(3)}]\n[${b.toFixed(3)}  ${c.toFixed(3)}  ${a.toFixed(3)}]`;
+                return (
+                  <>
+                    <div>[{a.toFixed(3)}  {b.toFixed(3)}  {c.toFixed(3)}]</div>
+                    <div>[{c.toFixed(3)}  {a.toFixed(3)}  {b.toFixed(3)}]</div>
+                    <div>[{b.toFixed(3)}  {c.toFixed(3)}  {a.toFixed(3)}]</div>
+                  </>
+                );
               })()}
             </div>
           </div>
