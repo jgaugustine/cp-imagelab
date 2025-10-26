@@ -174,12 +174,24 @@ export function MathExplanation({ brightness, contrast, saturation, hue }: MathE
 
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-muted-foreground">
-              Matrix multiplication:
+              For every pixel (r, g, b):
             </div>
             <div className="text-primary font-mono mt-2 text-xs">
-              [R']   [rotation matrix]   [R]<br/>
-              [G'] = [   3 × 3      ] × [G]<br/>
-              [B']   [              ]   [B]
+              {(() => {
+                const angle = (hue * Math.PI) / 180;
+                const cosA = Math.cos(angle);
+                const sinA = Math.sin(angle);
+                const a = (cosA + (1 - cosA) / 3).toFixed(3);
+                const b = (1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA).toFixed(3);
+                const c = (1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA).toFixed(3);
+                return (
+                  <>
+                    <div>r&apos; = {a}×r + {b}×g + {c}×b</div>
+                    <div>g&apos; = {c}×r + {a}×g + {b}×b</div>
+                    <div>b&apos; = {b}×r + {c}×g + {a}×b</div>
+                  </>
+                );
+              })()}
             </div>
             <div className="text-muted-foreground mt-3 text-xs">
               This preserves luminance while rotating colors around the color wheel.
