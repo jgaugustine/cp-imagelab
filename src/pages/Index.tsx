@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Upload } from "lucide-react";
 import { ImageCanvas } from "@/components/ImageCanvas";
 import { MathExplanation } from "@/components/MathExplanation";
+import { TransformationType } from "@/types/transformations";
+import { TransformationOrderControls } from "@/components/TransformationOrderControls";
 
 export default function Index() {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -12,6 +14,12 @@ export default function Index() {
   const [contrast, setContrast] = useState(1);
   const [saturation, setSaturation] = useState(1);
   const [hue, setHue] = useState(0);
+  const [transformOrder, setTransformOrder] = useState<TransformationType[]>([
+    'brightness',
+    'contrast',
+    'saturation',
+    'hue'
+  ]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -69,12 +77,20 @@ export default function Index() {
                   contrast={contrast}
                   saturation={saturation}
                   hue={hue}
+                  transformOrder={transformOrder}
                 />
               )}
             </Card>
 
             <Card className="p-6 border-border bg-card">
               <h2 className="text-xl font-semibold text-primary mb-6">Transformation Controls</h2>
+              
+              <div className="mb-6">
+                <TransformationOrderControls
+                  order={transformOrder}
+                  onOrderChange={setTransformOrder}
+                />
+              </div>
               
               <div className="space-y-6">
                 <div>

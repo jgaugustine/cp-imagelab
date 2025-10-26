@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { PixelInspector } from "./PixelInspector";
+import { TransformationType, RGB } from "@/types/transformations";
 
 interface ImageCanvasProps {
   image: HTMLImageElement;
@@ -7,27 +8,97 @@ interface ImageCanvasProps {
   contrast: number;
   saturation: number;
   hue: number;
+  transformOrder: TransformationType[];
 }
 
 interface InspectorData {
   x: number;
   y: number;
-  originalRGB: { r: number; g: number; b: number };
-  transformedRGB: { r: number; g: number; b: number };
-  stepByStep: {
-    afterBrightness: { r: number; g: number; b: number };
-    afterContrast: { r: number; g: number; b: number };
-    afterSaturation: { r: number; g: number; b: number };
-    afterHue: { r: number; g: number; b: number };
-  };
+  originalRGB: RGB;
+  transformedRGB: RGB;
+  stepByStep: Record<TransformationType, RGB>;
+  transformOrder: TransformationType[];
   cursorX: number;
   cursorY: number;
 }
 
-export function ImageCanvas({ image, brightness, contrast, saturation, hue }: ImageCanvasProps) {
+const clamp = (val: number): number => Math.max(0, Math.min(255, val));
+
+const applyBrightness = (rgb: RGB, value: number): RGB => {
+  return {
+    r: clamp(rgb.r + value),
+    g: clamp(rgb.g + value),
+    b: clamp(rgb.b + value)
+  };
+};
+
+const applyContrast = (rgb: RGB, value: number): RGB => {
+  return {
+    r: clamp((rgb.r - 128) * value + 128),
+    g: clamp((rgb.g - 128) * value + 128),
+    b: clamp((rgb.b - 128) * value + 128)
+  };
+};
+
+const applySaturation = (rgb: RGB, value: number): RGB => {
+  if (value === 1) return rgb;
+  const gray = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+  return {
+    r: clamp(gray + (rgb.r - gray) * value),
+    g: clamp(gray + (rgb.g - gray) * value),
+    b: clamp(gray + (rgb.b - gray) * value)
+  };
+};
+
+const applyHue = (rgb: RGB, value: number): RGB => {
+  if (value === 0) return rgb;
+  
+  const angle = (value * Math.PI) / 180;
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+
+  const matrix = [
+    cosA + (1 - cosA) / 3, 
+    1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA, 
+    1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA,
+    1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA, 
+    cosA + 1/3 * (1 - cosA), 
+    1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA,
+    1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA, 
+    1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA, 
+    cosA + 1/3 * (1 - cosA)
+  ];
+
+  return {
+    r: clamp(rgb.r * matrix[0] + rgb.g * matrix[1] + rgb.b * matrix[2]),
+    g: clamp(rgb.r * matrix[3] + rgb.g * matrix[4] + rgb.b * matrix[5]),
+    b: clamp(rgb.r * matrix[6] + rgb.g * matrix[7] + rgb.b * matrix[8])
+  };
+};
+
+export function ImageCanvas({ image, brightness, contrast, saturation, hue, transformOrder }: ImageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [inspectorData, setInspectorData] = useState<InspectorData | null>(null);
   const originalImageDataRef = useRef<ImageData | null>(null);
+
+  const getTransformValue = (type: TransformationType): number => {
+    switch (type) {
+      case 'brightness': return brightness;
+      case 'contrast': return contrast;
+      case 'saturation': return saturation;
+      case 'hue': return hue;
+    }
+  };
+
+  const applyTransformation = (rgb: RGB, type: TransformationType): RGB => {
+    const value = getTransformValue(type);
+    switch (type) {
+      case 'brightness': return applyBrightness(rgb, value);
+      case 'contrast': return applyContrast(rgb, value);
+      case 'saturation': return applySaturation(rgb, value);
+      case 'hue': return applyHue(rgb, value);
+    }
+  };
 
   useEffect(() => {
     if (!canvasRef.current || !image) return;
@@ -56,60 +127,26 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue }: Im
       originalImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
     }
 
-    // Apply transformations
+    // Apply transformations in user-defined order
     for (let i = 0; i < data.length; i += 4) {
-      let r = data[i];
-      let g = data[i + 1];
-      let b = data[i + 2];
-
-      // 1. Brightness (Matrix Addition)
-      r += brightness;
-      g += brightness;
-      b += brightness;
-
-      // 2. Contrast (Scalar Multiplication)
-      r = (r - 128) * contrast + 128;
-      g = (g - 128) * contrast + 128;
-      b = (b - 128) * contrast + 128;
-
-      // 3. Saturation (RGB → HSL transformation)
-      if (saturation !== 1) {
-        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-        r = gray + (r - gray) * saturation;
-        g = gray + (g - gray) * saturation;
-        b = gray + (b - gray) * saturation;
+      let rgb: RGB = { 
+        r: data[i], 
+        g: data[i + 1], 
+        b: data[i + 2] 
+      };
+      
+      // Apply each transformation in order with clamping
+      for (const transformType of transformOrder) {
+        rgb = applyTransformation(rgb, transformType);
       }
-
-      // 4. Hue Rotation (Color space rotation matrix)
-      if (hue !== 0) {
-        const angle = (hue * Math.PI) / 180;
-        const cosA = Math.cos(angle);
-        const sinA = Math.sin(angle);
-
-        // Hue rotation matrix
-        const matrix = [
-          cosA + (1 - cosA) / 3, 1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA, 1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA,
-          1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA, cosA + 1/3 * (1 - cosA), 1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA,
-          1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA, 1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA, cosA + 1/3 * (1 - cosA)
-        ];
-
-        const newR = r * matrix[0] + g * matrix[1] + b * matrix[2];
-        const newG = r * matrix[3] + g * matrix[4] + b * matrix[5];
-        const newB = r * matrix[6] + g * matrix[7] + b * matrix[8];
-
-        r = newR;
-        g = newG;
-        b = newB;
-      }
-
-      // Clamp values
-      data[i] = Math.max(0, Math.min(255, r));
-      data[i + 1] = Math.max(0, Math.min(255, g));
-      data[i + 2] = Math.max(0, Math.min(255, b));
+      
+      data[i] = rgb.r;
+      data[i + 1] = rgb.g;
+      data[i + 2] = rgb.b;
     }
 
     ctx.putImageData(imageData, 0, 0);
-  }, [image, brightness, contrast, saturation, hue]);
+  }, [image, brightness, contrast, saturation, hue, transformOrder]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -130,80 +167,30 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue }: Im
     const index = (y * canvas.width + x) * 4;
     const originalData = originalImageDataRef.current.data;
 
-    const originalRGB = {
+    const originalRGB: RGB = {
       r: originalData[index],
       g: originalData[index + 1],
       b: originalData[index + 2],
     };
 
-    // Calculate step-by-step transformations
-    let r = originalRGB.r;
-    let g = originalRGB.g;
-    let b = originalRGB.b;
+    // Calculate step-by-step transformations in current order
+    const stepByStep: Record<TransformationType, RGB> = {} as Record<TransformationType, RGB>;
+    let rgb = originalRGB;
 
-    // 1. Brightness
-    r += brightness;
-    g += brightness;
-    b += brightness;
-    const afterBrightness = { r, g, b };
-
-    // 2. Contrast
-    r = (r - 128) * contrast + 128;
-    g = (g - 128) * contrast + 128;
-    b = (b - 128) * contrast + 128;
-    const afterContrast = { r, g, b };
-
-    // 3. Saturation
-    if (saturation !== 1) {
-      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-      r = gray + (r - gray) * saturation;
-      g = gray + (g - gray) * saturation;
-      b = gray + (b - gray) * saturation;
+    for (const transformType of transformOrder) {
+      rgb = applyTransformation(rgb, transformType);
+      stepByStep[transformType] = { ...rgb };  // Store clamped result
     }
-    const afterSaturation = { r, g, b };
-
-    // 4. Hue rotation
-    if (hue !== 0) {
-      const angle = (hue * Math.PI) / 180;
-      const cosA = Math.cos(angle);
-      const sinA = Math.sin(angle);
-
-      const matrix = [
-        cosA + (1 - cosA) / 3, 1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA, 1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA,
-        1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA, cosA + 1/3 * (1 - cosA), 1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA,
-        1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA, 1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA, cosA + 1/3 * (1 - cosA)
-      ];
-
-      const newR = r * matrix[0] + g * matrix[1] + b * matrix[2];
-      const newG = r * matrix[3] + g * matrix[4] + b * matrix[5];
-      const newB = r * matrix[6] + g * matrix[7] + b * matrix[8];
-
-      r = newR;
-      g = newG;
-      b = newB;
-    }
-    const afterHue = { r, g, b };
-
-    // Clamp final values
-    const transformedRGB = {
-      r: Math.max(0, Math.min(255, r)),
-      g: Math.max(0, Math.min(255, g)),
-      b: Math.max(0, Math.min(255, b)),
-    };
 
     setInspectorData({
       x,
       y,
       originalRGB,
-      transformedRGB,
-      stepByStep: {
-        afterBrightness,
-        afterContrast,
-        afterSaturation,
-        afterHue,
-      },
+      transformedRGB: rgb,  // Final is already clamped
+      stepByStep,
+      transformOrder,
       cursorX: e.clientX,
-      cursorY: e.clientY,
+      cursorY: e.clientY
     });
   };
 
