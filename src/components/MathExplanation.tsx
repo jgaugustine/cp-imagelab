@@ -80,6 +80,13 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               b' = b + {brightness}
             </div>
           </div>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">What this means</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Brightness simply shifts all three channels by the same amount. Think of moving a point in the RGB cube
+              straight along the gray diagonal. Results are clamped to [0,255] so values don’t wrap.
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="vibrance" className="space-y-4 mt-4">
@@ -168,6 +175,13 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               })()}
             </div>
           </div>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">What this means</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Vibrance pushes dull colors more than already vivid ones. It helps avoid over-saturating skin tones and
+              keeps highlights from clipping. Using linear-light weights better preserves perceived lightness.
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="contrast" className="space-y-4 mt-4">
@@ -236,6 +250,13 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               r' = (r - 128) × {contrast.toFixed(2)} + 128<br/>
               g' = (g - 128) × {contrast.toFixed(2)} + 128<br/>
               b' = (b - 128) × {contrast.toFixed(2)} + 128
+            </div>
+          </div>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">What this means</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Contrast stretches distances from mid-gray (128). Values above 128 move up; values below move down.
+              In linear-light, this behaves like a true dynamic‑range change; in sRGB it’s a display‑referred tweak.
             </div>
           </div>
         </TabsContent>
@@ -376,6 +397,13 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               })()}
             </div>
           </div>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">What this means</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Saturation pulls each pixel toward or away from its own gray version. At 0× you get gray; at 1× you keep
+              the original; above 1× colors intensify. Using linear‑light weights helps keep perceived brightness steady.
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="hue" className="space-y-4 mt-4">
@@ -390,61 +418,15 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <RGBCubeVisualizer mode="hue" params={{ hue }} selectedRGB={selectedRGB} />
           </Card>
           <Card className="p-4 border-border bg-card">
-            <h4 className="text-sm font-semibold text-foreground mb-3">Hue rotation derivation (organized)</h4>
-            <div className="text-xs space-y-3">
+            <h4 className="text-sm font-semibold text-foreground mb-3">What this means</h4>
+            <div className="text-xs space-y-2 text-muted-foreground">
               <div>
-                <div className="text-foreground font-medium">1) Orthonormal basis (u, v, w)</div>
-                <div className="bg-muted rounded p-3 font-mono text-primary mt-1">
-                  u = (1, 1, 1) / √3  (gray / luminance axis)<br/>
-                  v = (1, −1, 0) / √2  (chroma axis 1)<br/>
-                  w = (1, 1, −2) / √6  (chroma axis 2)
-                </div>
-                <div className="text-muted-foreground mt-1">
-                  These are orthonormal: each has unit length and they are mutually perpendicular.
-                </div>
+                Hue rotation spins colors around the gray axis (where R=G=B). Brightness stays about the same; only the
+                hue changes. Imagine rotating a point around the center line of the RGB cube.
               </div>
-
               <div>
-                <div className="text-foreground font-medium">2) Change of basis matrix</div>
-                <div className="text-foreground mt-1">Stack u, v, w as columns to map RGB → (u,v,w):</div>
-                <div className="bg-muted rounded p-3 font-mono text-primary text-[11px] mt-1">
-                  B = [ u v w ] =
-                  \n[ 1/√3   1/√2   1/√6 ]
-                  \n[ 1/√3  −1/√2   1/√6 ]
-                  \n[ 1/√3    0    −2/√6 ]
-                </div>
-              </div>
-
-              <div>
-                <div className="text-foreground font-medium">3) Rotate only in chroma plane</div>
-                <div className="text-foreground mt-1">Keep u fixed; rotate (v,w) by θ:</div>
-                <div className="bg-muted rounded p-3 font-mono text-primary text-[11px] mt-1">
-                  R(θ) =
-                  \n[ 1    0        0     ]
-                  \n[ 0  cosθ   −sinθ ]
-                  \n[ 0  sinθ    cosθ ]
-                </div>
-              </div>
-
-              <div>
-                <div className="text-foreground font-medium">4) Map back to RGB</div>
-                <div className="bg-muted rounded p-3 font-mono text-primary text-[11px] mt-1">
-                  M(θ) = B · R(θ) · Bᵀ
-                </div>
-                <div className="text-muted-foreground mt-1">
-                  Multiplying out yields the RGB-space hue rotation used above.
-                </div>
-              </div>
-
-              <div>
-                <div className="text-foreground font-medium">5) Resulting matrix entries</div>
-                <div className="bg-muted rounded p-3 font-mono text-primary mt-1">
-                  Diagonals: cosθ + (1 − cosθ)/3<br/>
-                  Off-diagonals: (1/3)(1 − cosθ) ± √(1/3)·sinθ
-                </div>
-                <div className="text-muted-foreground mt-1">
-                  1/3 = (1/√3)² comes from projecting onto u (gray axis). √(1/3) = 1/√3 scales how (v,w) rotation mixes back into RGB off‑diagonals. Luminance is preserved while hue changes.
-                </div>
+                Small angles make subtle shifts; larger angles can cycle colors (reds→greens→blues). Near gamut edges,
+                extreme rotations may clip, which can slightly change saturation.
               </div>
             </div>
           </Card>
@@ -495,6 +477,13 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             </div>
             <div className="text-muted-foreground mt-3 text-xs">
               This preserves luminance while rotating colors around the color wheel.
+            </div>
+          </div>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Why brightness stays stable</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              We rotate around the gray axis, so the gray component of each pixel is kept the same while colors circle
+              around it. That’s why the picture doesn’t get lighter or darker—only the color tone changes.
             </div>
           </div>
         </TabsContent>
