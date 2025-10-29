@@ -177,8 +177,15 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB }: RGBCube
         const V = params.vibrance ?? 0;
         const linear = params.linearSaturation ?? false;
         const R = original.r, G = original.g, B = original.b;
-        const maxC = Math.max(R, G, B);
-        const minC = Math.min(R, G, B);
+        const toLinLocal = (c: number) => {
+          const x = c / 255;
+          return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+        };
+        const Rm = linear ? toLinLocal(R) : R;
+        const Gm = linear ? toLinLocal(G) : G;
+        const Bm = linear ? toLinLocal(B) : B;
+        const maxC = Math.max(Rm, Gm, Bm);
+        const minC = Math.min(Rm, Gm, Bm);
         const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
         const f = 1 + V * (1 - sEst);
         const wR = linear ? 0.2126 : 0.299;
@@ -362,7 +369,7 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB }: RGBCube
         <canvas ref={canvasRef} width={width} height={height} style={{ width: '100%', height: 'auto', cursor: 'grab' }} />
       </div>
       <div className="text-[11px] font-mono text-muted-foreground">
-        Drag to rotate view. Scroll to zoom. Original vector green, transformed fuchsia.
+        Drag to rotate view. Scroll to zoom. Legend: original vector = green, transformed = fuchsia, auxiliary guides = cyan, gray axis = slate.
       </div>
     </div>
   );

@@ -78,6 +78,27 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           </div>
 
           <div className="bg-muted p-4 rounded-lg font-mono text-sm">
+            <div className="text-foreground">Distance from midpoint</div>
+            <div className="text-primary mt-2 text-xs">
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                const k = contrast;
+                const dx = R - 128, dy = G - 128, dz = B - 128;
+                const before = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                const after = Math.abs(k) * before;
+                return (
+                  <>
+                    <div>‖[R,G,B] − [128,128,128]‖₂ = {before.toFixed(2)}</div>
+                    <div>After scaling: × {k.toFixed(2)} ⇒ {after.toFixed(2)}</div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+
+          <div className="bg-muted p-4 rounded-lg font-mono text-sm">
             <div className="text-foreground">Projection onto gray axis</div>
             <div className="text-primary mt-2 text-xs">
               {(() => {
@@ -374,23 +395,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             </div>
           </div>
           
-          <div className="bg-muted p-4 rounded-lg font-mono text-sm">
-            <div className="text-foreground">Original RGB Vector:</div>
-            <div className="text-primary mt-2">
-              {(() => {
-                const R = selectedRGB?.r ?? 200;
-                const G = selectedRGB?.g ?? 150;
-                const B = selectedRGB?.b ?? 100;
-                return `[R, G, B] = [${Math.round(R)}, ${Math.round(G)}, ${Math.round(B)}]`;
-              })()}
-            </div>
-            <div className="text-foreground mt-4">Interpolate with saturation ({saturation.toFixed(2)}):</div>
-            <div className="text-secondary mt-2">
-              R' = Gray + (R - Gray) × saturation<br/>
-              G' = Gray + (G - Gray) × saturation<br/>
-              B' = Gray + (B - Gray) × saturation
-            </div>
-          </div>
+          
 
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-muted-foreground mb-2">Computation space</div>
@@ -413,12 +418,12 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             </div>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="bg-muted p-4 rounded-lg text-sm">
-              <div className="text-foreground font-semibold">sRGB space (gamma-encoded)</div>
-              <div className="text-primary font-mono mt-2 text-xs">
-                {(() => {
-                  const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Numeric example (respects toggle)</div>
+            <div className="text-primary font-mono mt-2 text-xs">
+              {(() => {
+                const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
+                if (!linearSaturation) {
                   const wR = 0.299, wG = 0.587, wB = 0.114;
                   const gray = wR * R + wG * G + wB * B;
                   const s = saturation;
@@ -433,20 +438,12 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                       <div>B' = {gray.toFixed(3)} + ({Math.round(B)} − {gray.toFixed(3)}) × {s.toFixed(2)} = {Bp.toFixed(3)}</div>
                     </>
                   );
-                })()}
-              </div>
-            </div>
-
-            <div className="bg-muted p-4 rounded-lg text-sm">
-              <div className="text-foreground font-semibold">Linear-light space</div>
-              <div className="text-primary font-mono mt-2 text-xs">
-                {(() => {
+                } else {
                   const toLin = (c: number) => {
                     const x = c / 255;
                     return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
                   };
                   const toSRGB = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
-                  const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
                   const rl = toLin(R), gl = toLin(G), bl = toLin(B);
                   const wR = 0.2126, wG = 0.7152, wB = 0.0722;
                   const Y = wR * rl + wG * gl + wB * bl;
@@ -459,20 +456,14 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                   const Bp = Math.max(0, Math.min(255, toSRGB(blinP) * 255));
                   return (
                     <>
-                      <div>rₗ = toLinear({Math.round(R)}/255) = {rl.toFixed(6)}</div>
-                      <div>gₗ = toLinear({Math.round(G)}/255) = {gl.toFixed(6)}</div>
-                      <div>bₗ = toLinear({Math.round(B)}/255) = {bl.toFixed(6)}</div>
-                      <div className="mt-2">Y = 0.2126×rₗ + 0.7152×gₗ + 0.0722×bₗ = {Y.toFixed(6)}</div>
-                      <div className="mt-2">rₗ' = Y + (rₗ − Y) × {s.toFixed(2)} = {rlinP.toFixed(6)}</div>
-                      <div>gₗ' = Y + (gₗ − Y) × {s.toFixed(2)} = {glinP.toFixed(6)}</div>
-                      <div>bₗ' = Y + (bₗ − Y) × {s.toFixed(2)} = {blinP.toFixed(6)}</div>
-                      <div className="mt-2">R' = toSRGB(rₗ') × 255 = {Rp.toFixed(3)}</div>
-                      <div>G' = toSRGB(gₗ') × 255 = {Gp.toFixed(3)}</div>
-                      <div>B' = toSRGB(bₗ') × 255 = {Bp.toFixed(3)}</div>
+                      <div>Y = 0.2126×rₗ + 0.7152×gₗ + 0.0722×bₗ = {Y.toFixed(6)}</div>
+                      <div className="mt-2">R' = toSRGB(Y + (rₗ − Y) × {s.toFixed(2)}) × 255 = {Rp.toFixed(3)}</div>
+                      <div>G' = toSRGB(Y + (gₗ − Y) × {s.toFixed(2)}) × 255 = {Gp.toFixed(3)}</div>
+                      <div>B' = toSRGB(Y + (bₗ − Y) × {s.toFixed(2)}) × 255 = {Bp.toFixed(3)}</div>
                     </>
                   );
-                })()}
-              </div>
+                }
+              })()}
             </div>
           </div>
 
@@ -503,21 +494,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             </div>
           </div>
           
-          <div className="bg-muted p-4 rounded-lg text-sm">
-            <div className="text-foreground font-semibold">Geometric intuition</div>
-            <div className="text-muted-foreground mt-2 text-xs">
-              In the RGB cube, the gray axis is the line R=G=B. Saturation moves points along the straight line between a
-              pixel and its projection onto that axis. It scales chroma uniformly: same factor for near‑gray and vivid
-              colors; only the distance from the axis changes, not the direction around it.
-            </div>
-          </div>
-          <div className="bg-muted p-4 rounded-lg text-sm">
-            <div className="text-foreground font-semibold">What this means</div>
-            <div className="text-muted-foreground mt-2 text-xs">
-              Saturation pulls each pixel toward or away from its own gray version. At 0× you get gray; at 1× you keep
-              the original; above 1× colors intensify. Using linear‑light weights helps keep perceived brightness steady.
-            </div>
-          </div>
+          
           
         </TabsContent>
 

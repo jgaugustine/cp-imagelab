@@ -172,7 +172,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
 
     // Get image data
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
+    const { data } = imageData;
 
     // Store original image data for inspection (refresh per image/params)
     originalImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
