@@ -333,6 +333,37 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube Rotation</h4>
             <HueRotationCube hue={hue} selectedRGB={selectedRGB} />
           </Card>
+          <Card className="p-4 border-border bg-card">
+            <h4 className="text-sm font-semibold text-foreground mb-2">Why the 1/3 and √(1/3) terms?</h4>
+            <div className="text-xs space-y-2">
+              <div className="text-foreground">
+                Rotate around the gray axis by changing basis to an orthonormal RGB frame, rotate in the chroma plane, then map back:
+              </div>
+              <div className="bg-muted rounded p-3 font-mono text-primary">
+                u = (1, 1, 1) / √3<br/>
+                v = (1, −1, 0) / √2<br/>
+                w = (1, 1, −2) / √6
+              </div>
+              <div className="text-foreground">
+                In the (u, v, w) basis, a hue rotation by θ keeps u (luminance) fixed and rotates (v, w):
+              </div>
+              <div className="bg-muted rounded p-3 font-mono text-primary">
+                R(θ) = diag(1, •, •) with the v–w block =<br/>
+                [ cosθ  −sinθ ]<br/>
+                [ sinθ   cosθ ]
+              </div>
+              <div className="text-foreground">
+                Mapping back to RGB (M = B · R(θ) · Bᵀ with B = [u v w]) yields the 3×3 matrix used in code:
+              </div>
+              <div className="bg-muted rounded p-3 font-mono text-primary">
+                Diagonals: cosθ + (1 − cosθ)/3<br/>
+                Off-diagonals: (1/3)(1 − cosθ) ± √(1/3)·sinθ
+              </div>
+              <div className="text-muted-foreground">
+                The 1/3 terms come from the u uᵀ = (1/3)·11ᵀ projection (gray axis). The ±√(1/3)·sinθ terms result from mixing in the rotated chroma basis (v, w) when transforming back to RGB. This construction preserves luminance while rotating hue.
+              </div>
+            </div>
+          </Card>
           
           <div className="bg-muted p-4 rounded-lg font-mono text-sm overflow-x-auto">
             <div className="text-foreground">Rotation angle: {hue}° = {(hue * Math.PI / 180).toFixed(3)} radians</div>

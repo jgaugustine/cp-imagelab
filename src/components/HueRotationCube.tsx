@@ -111,7 +111,7 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     const axisColor = "#94a3b8"; // slate-400
     const cubeColor = "#475569"; // slate-600
     const arcColor = "#0ea5e9"; // sky-500
-    const vecOriginal = "#22c55e"; // green-500
+    const vecOriginal = "#94a3b8"; // slate-400 (original vector, dotted)
     const vecRotated = "#d946ef"; // fuchsia-500
     const original = selectedRGB ?? { r: 200, g: 150, b: 100 };
     const matExact = buildHueRotationMatrix(hue);
@@ -119,8 +119,10 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
 
     // Helper to rotate then project
     const rp = (x: number, y: number, z: number) => {
-      const r = rotatePoint(x, y, z, yaw, pitch);
-      return project(r.x, r.y, r.z, width, height);
+      // Rotate view around cube center rather than origin
+      const cx = 127.5, cy = 127.5, cz = 127.5;
+      const r = rotatePoint(x - cx, y - cy, z - cz, yaw, pitch);
+      return project(r.x + cx, r.y + cy, r.z + cz, width, height);
     };
 
     // Cube vertices
@@ -184,7 +186,10 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     // Points removed; use arrows only
 
     // Vectors from origin to points with arrowheads
+    // Original vector as dotted gray
+    ctx.setLineDash([6, 4]);
     drawArrow(ctx, origin2d, p0, vecOriginal, 2, 8);
+    ctx.setLineDash([]);
     drawArrow(ctx, origin2d, p1, vecRotated, 2, 8);
 
     // Angle arc between projected vectors around the origin
