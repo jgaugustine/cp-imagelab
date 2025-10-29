@@ -116,6 +116,32 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                 );
               })()}
             </div>
+
+            <div className="text-foreground mt-4">Numeric example result:</div>
+            <div className="text-primary mt-2 text-xs">
+              {(() => {
+                const R = 200, G = 150, B = 100;
+                const maxC = Math.max(R, G, B);
+                const minC = Math.min(R, G, B);
+                const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
+                const f = 1 + (vibrance ?? 0) * (1 - sEst);
+                const wR = linearSaturation ? 0.2126 : 0.299;
+                const wG = linearSaturation ? 0.7152 : 0.587;
+                const wB = linearSaturation ? 0.0722 : 0.114;
+                const gray = wR * R + wG * G + wB * B;
+                const Rp = Math.max(0, Math.min(255, gray + (R - gray) * f));
+                const Gp = Math.max(0, Math.min(255, gray + (G - gray) * f));
+                const Bp = Math.max(0, Math.min(255, gray + (B - gray) * f));
+                return (
+                  <>
+                    <div>Gray = {wR.toFixed(4)}×{R} + {wG.toFixed(4)}×{G} + {wB.toFixed(4)}×{B} = {gray.toFixed(3)}</div>
+                    <div className="mt-2">R' = {gray.toFixed(3)} + ({R} − {gray.toFixed(3)}) × {f.toFixed(3)} = {Rp.toFixed(3)}</div>
+                    <div>G' = {gray.toFixed(3)} + ({G} − {gray.toFixed(3)}) × {f.toFixed(3)} = {Gp.toFixed(3)}</div>
+                    <div>B' = {gray.toFixed(3)} + ({B} − {gray.toFixed(3)}) × {f.toFixed(3)} = {Bp.toFixed(3)}</div>
+                  </>
+                );
+              })()}
+            </div>
           </div>
         </TabsContent>
 
@@ -197,6 +223,69 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             </div>
             <div className="text-muted-foreground mt-2 text-xs">
               This changes how Gray is derived under the hood without altering the formula above.
+            </div>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="bg-muted p-4 rounded-lg text-sm">
+              <div className="text-foreground font-semibold">sRGB space (gamma-encoded)</div>
+              <div className="text-primary font-mono mt-2 text-xs">
+                {(() => {
+                  const R = 200, G = 150, B = 100;
+                  const wR = 0.299, wG = 0.587, wB = 0.114;
+                  const gray = wR * R + wG * G + wB * B;
+                  const s = saturation;
+                  const Rp = Math.max(0, Math.min(255, gray + (R - gray) * s));
+                  const Gp = Math.max(0, Math.min(255, gray + (G - gray) * s));
+                  const Bp = Math.max(0, Math.min(255, gray + (B - gray) * s));
+                  return (
+                    <>
+                      <div>Gray = 0.299×{R} + 0.587×{G} + 0.114×{B} = {gray.toFixed(3)}</div>
+                      <div className="mt-2">R' = {gray.toFixed(3)} + ({R} − {gray.toFixed(3)}) × {s.toFixed(2)} = {Rp.toFixed(3)}</div>
+                      <div>G' = {gray.toFixed(3)} + ({G} − {gray.toFixed(3)}) × {s.toFixed(2)} = {Gp.toFixed(3)}</div>
+                      <div>B' = {gray.toFixed(3)} + ({B} − {gray.toFixed(3)}) × {s.toFixed(2)} = {Bp.toFixed(3)}</div>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+
+            <div className="bg-muted p-4 rounded-lg text-sm">
+              <div className="text-foreground font-semibold">Linear-light space</div>
+              <div className="text-primary font-mono mt-2 text-xs">
+                {(() => {
+                  const toLin = (c: number) => {
+                    const x = c / 255;
+                    return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+                  };
+                  const toSRGB = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
+                  const R = 200, G = 150, B = 100;
+                  const rl = toLin(R), gl = toLin(G), bl = toLin(B);
+                  const wR = 0.2126, wG = 0.7152, wB = 0.0722;
+                  const Y = wR * rl + wG * gl + wB * bl;
+                  const s = saturation;
+                  const rlinP = Y + (rl - Y) * s;
+                  const glinP = Y + (gl - Y) * s;
+                  const blinP = Y + (bl - Y) * s;
+                  const Rp = Math.max(0, Math.min(255, toSRGB(rlinP) * 255));
+                  const Gp = Math.max(0, Math.min(255, toSRGB(glinP) * 255));
+                  const Bp = Math.max(0, Math.min(255, toSRGB(blinP) * 255));
+                  return (
+                    <>
+                      <div>rₗ = toLinear({R}/255) = {rl.toFixed(6)}</div>
+                      <div>gₗ = toLinear({G}/255) = {gl.toFixed(6)}</div>
+                      <div>bₗ = toLinear({B}/255) = {bl.toFixed(6)}</div>
+                      <div className="mt-2">Y = 0.2126×rₗ + 0.7152×gₗ + 0.0722×bₗ = {Y.toFixed(6)}</div>
+                      <div className="mt-2">rₗ' = Y + (rₗ − Y) × {s.toFixed(2)} = {rlinP.toFixed(6)}</div>
+                      <div>gₗ' = Y + (gₗ − Y) × {s.toFixed(2)} = {glinP.toFixed(6)}</div>
+                      <div>bₗ' = Y + (bₗ − Y) × {s.toFixed(2)} = {blinP.toFixed(6)}</div>
+                      <div className="mt-2">R' = toSRGB(rₗ') × 255 = {Rp.toFixed(3)}</div>
+                      <div>G' = toSRGB(gₗ') × 255 = {Gp.toFixed(3)}</div>
+                      <div>B' = toSRGB(bₗ') × 255 = {Bp.toFixed(3)}</div>
+                    </>
+                  );
+                })()}
+              </div>
             </div>
           </div>
 
