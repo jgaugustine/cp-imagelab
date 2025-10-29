@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface HueRotationCubeProps {
   hue: number; // degrees
@@ -35,13 +35,29 @@ function multiplyRGB(m: number[], r: number, g: number, b: number) {
   };
 }
 
-// Simple isometric-like projection from 3D (0..255) to 2D canvas coords
+// Rotate a point by yaw (around Y) and pitch (around X) in degrees
+function rotatePoint(x: number, y: number, z: number, yawDeg: number, pitchDeg: number) {
+  const yaw = (yawDeg * Math.PI) / 180;
+  const pitch = (pitchDeg * Math.PI) / 180;
+  // Yaw around Y
+  const cosY = Math.cos(yaw), sinY = Math.sin(yaw);
+  let rx = cosY * x + sinY * z;
+  let ry = y;
+  let rz = -sinY * x + cosY * z;
+  // Pitch around X
+  const cosP = Math.cos(pitch), sinP = Math.sin(pitch);
+  const ry2 = cosP * ry - sinP * rz;
+  const rz2 = sinP * ry + cosP * rz;
+  return { x: rx, y: ry2, z: rz2 };
+}
+
+// Simple projection from 3D (0..255) to 2D canvas coords using a fixed axonometric basis
 function project(x: number, y: number, z: number, width: number, height: number) {
   const sx = 0.707 * (x - y);
   const sy = 0.408 * (x + y) - 0.816 * z;
-  const scale = Math.min(width, height) / 400; // scale cube nicely
+  const scale = Math.min(width, height) / 380; // scale cube to fit panel
   const px = width / 2 + sx * scale;
-  const py = height * 0.7 + sy * scale;
+  const py = height / 2 + sy * scale; // center vertically
   return { x: px, y: py };
 }
 
@@ -55,6 +71,10 @@ function line(ctx: CanvasRenderingContext2D, a: { x: number; y: number }, b: { x
 
 export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [yaw, setYaw] = useState<number>(-35);   // initial view
+  const [pitch, setPitch] = useState<number>(20);
+  const isDraggingRef = useRef(false);
+  const lastPosRef = useRef<{ x: number; y: number } | null>(null);
   // Size chosen to fit the math panel; canvas scales with parent width via CSS
   const width = 320;
   const height = 220;
@@ -73,8 +93,14 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     const vecOriginal = "#22c55e"; // green-500
     const vecRotated = "#d946ef"; // fuchsia-500
     const original = selectedRGB ?? { r: 200, g: 150, b: 100 };
-    const mat = buildHueRotationMatrix(hue);
-    const rotated = multiplyRGB(mat, original.r, original.g, original.b);
+    const matExact = buildHueRotationMatrix(hue);
+    const rotated = multiplyRGB(matExact, original.r, original.g, original.b);
+
+    // Helper to rotate then project
+    const rp = (x: number, y: number, z: number) => {
+      const r = rotatePoint(x, y, z, yaw, pitch);
+      return project(r.x, r.y, r.z, width, height);
+    };
 
     // Cube vertices
     const V = [
@@ -97,20 +123,20 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     // Draw cube
     ctx.lineWidth = 1;
     ctx.strokeStyle = cubeColor;
-    const PV = V.map(([x, y, z]) => project(x, y, z, width, height));
+    const PV = V.map(([x, y, z]) => rp(x, y, z));
     for (const [a, b] of E) {
       line(ctx, PV[a], PV[b]);
     }
 
     // Gray axis
     ctx.strokeStyle = axisColor;
-    line(ctx, project(0, 0, 0, width, height), project(255, 255, 255, width, height));
+    line(ctx, rp(0, 0, 0), rp(255, 255, 255));
 
     // Colored R/G/B axes from origin to unit corners
-    const origin2d = project(0, 0, 0, width, height);
-    const pRaxis = project(255, 0, 0, width, height);
-    const pGaxis = project(0, 255, 0, width, height);
-    const pBaxis = project(0, 0, 255, width, height);
+    const origin2d = rp(0, 0, 0);
+    const pRaxis = rp(255, 0, 0);
+    const pGaxis = rp(0, 255, 0);
+    const pBaxis = rp(0, 0, 255);
     ctx.lineWidth = 3;
     // R axis (red)
     ctx.strokeStyle = "#ef4444"; // red-500
@@ -131,7 +157,7 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     ctx.fillText("B", pBaxis.x, pBaxis.y - 10);
 
     // Rotation arc: draw a small arc around the mid gray point to indicate angle
-    const center = project(127.5, 127.5, 127.5, width, height);
+    const center = rp(127.5, 127.5, 127.5);
     ctx.strokeStyle = arcColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -153,8 +179,8 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     ctx.fill();
 
     // Plot original and rotated points
-    const p0 = project(original.r, original.g, original.b, width, height);
-    const p1 = project(rotated.r, rotated.g, rotated.b, width, height);
+    const p0 = rp(original.r, original.g, original.b);
+    const p1 = rp(rotated.r, rotated.g, rotated.b);
     // Original point
     ctx.fillStyle = `rgb(${Math.round(original.r)}, ${Math.round(original.g)}, ${Math.round(original.b)})`;
     ctx.beginPath();
@@ -172,20 +198,78 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     line(ctx, origin2d, p0);
     ctx.strokeStyle = vecRotated;
     line(ctx, origin2d, p1);
-  }, [hue, selectedRGB]);
+  }, [hue, selectedRGB, yaw, pitch]);
 
-  // Matrix block and numbers
+  // Matrix block and numbers (exact and display)
   const angleRad = (hue * Math.PI) / 180;
   const cosA = Math.cos(angleRad);
   const sinA = Math.sin(angleRad);
-  const mat = buildHueRotationMatrix(hue).map(v => Number(v.toFixed(3)));
+  const matExact = buildHueRotationMatrix(hue);
+  const matDisp = matExact.map(v => Number(v.toFixed(3)));
   const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
-  const out = multiplyRGB(mat, R, G, B);
+  const out = multiplyRGB(matExact, R, G, B);
+
+  // Drag handlers
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const onDown = (e: MouseEvent) => {
+      isDraggingRef.current = true;
+      lastPosRef.current = { x: e.clientX, y: e.clientY };
+    };
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current || !lastPosRef.current) return;
+      const dx = e.clientX - lastPosRef.current.x;
+      const dy = e.clientY - lastPosRef.current.y;
+      lastPosRef.current = { x: e.clientX, y: e.clientY };
+      setYaw(prev => prev + dx * 0.4);
+      setPitch(prev => Math.max(-89, Math.min(89, prev - dy * 0.3)));
+    };
+    const onUp = () => {
+      isDraggingRef.current = false;
+      lastPosRef.current = null;
+    };
+    canvas.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    // Touch
+    const onTDown = (e: TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      const t = e.touches[0];
+      isDraggingRef.current = true;
+      lastPosRef.current = { x: t.clientX, y: t.clientY };
+    };
+    const onTMove = (e: TouchEvent) => {
+      if (!isDraggingRef.current || !lastPosRef.current || e.touches.length !== 1) return;
+      const t = e.touches[0];
+      const dx = t.clientX - lastPosRef.current.x;
+      const dy = t.clientY - lastPosRef.current.y;
+      lastPosRef.current = { x: t.clientX, y: t.clientY };
+      setYaw(prev => prev + dx * 0.4);
+      setPitch(prev => Math.max(-89, Math.min(89, prev - dy * 0.3)));
+    };
+    const onTUp = () => {
+      isDraggingRef.current = false;
+      lastPosRef.current = null;
+    };
+    canvas.addEventListener('touchstart', onTDown, { passive: true });
+    window.addEventListener('touchmove', onTMove, { passive: true });
+    window.addEventListener('touchend', onTUp);
+
+    return () => {
+      canvas.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      canvas.removeEventListener('touchstart', onTDown);
+      window.removeEventListener('touchmove', onTMove);
+      window.removeEventListener('touchend', onTUp);
+    };
+  }, []);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div className="bg-muted rounded-lg p-2 flex items-center justify-center">
-        <canvas ref={canvasRef} width={width} height={height} style={{ width: '100%', height: 'auto' }} />
+        <canvas ref={canvasRef} width={width} height={height} style={{ width: '100%', height: 'auto', cursor: 'grab' }} />
       </div>
       <div className="bg-muted rounded-lg p-4 text-xs font-mono space-y-2">
         <div className="text-foreground">Hue rotation: {hue}°</div>
@@ -194,14 +278,14 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
         <div className="text-primary">cos θ = {cosA.toFixed(3)}, sin θ = {sinA.toFixed(3)}</div>
         <div className="text-foreground">Rotation matrix (3×3):</div>
         <div className="text-primary">
-          [{mat[0]} {mat[1]} {mat[2]}]<br/>
-          [{mat[3]} {mat[4]} {mat[5]}]<br/>
-          [{mat[6]} {mat[7]} {mat[8]}]
+          [{matDisp[0]} {matDisp[1]} {matDisp[2]}]<br/>
+          [{matDisp[3]} {matDisp[4]} {matDisp[5]}]<br/>
+          [{matDisp[6]} {matDisp[7]} {matDisp[8]}]
         </div>
         <div className="text-foreground">Vector multiply (example):</div>
         <div className="text-primary">in = [{Math.round(R)}, {Math.round(G)}, {Math.round(B)}]</div>
         <div className="text-primary">out = [{Math.round(out.r)}, {Math.round(out.g)}, {Math.round(out.b)}]</div>
-        <div className="text-muted-foreground">Colors: vector(orig) green, vector(rot) fuchsia, arc sky.</div>
+        <div className="text-muted-foreground">Drag to rotate view. Colors: vector(orig) green, vector(rot) fuchsia, arc sky.</div>
       </div>
     </div>
   );
