@@ -39,6 +39,13 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Brightness (addition)</h4>
             <RGBCubeVisualizer mode="brightness" params={{ brightness }} selectedRGB={selectedRGB} />
           </Card>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Geometric intuition</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Translation along the gray diagonal (R=G=B): the point moves parallel to the gray axis by the same
+              amount in each channel, so hue and chroma stay the same while position shifts.
+            </div>
+          </div>
           
           <div className="bg-muted p-4 rounded-lg font-mono text-sm">
             <div className="text-foreground">Original RGB Vector:</div>
@@ -66,6 +73,31 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                 const Gp = Math.max(0, Math.min(255, G + brightness));
                 const Bp = Math.max(0, Math.min(255, B + brightness));
                 return `= [${Rp.toFixed(0)}, ${Gp.toFixed(0)}, ${Bp.toFixed(0)}]`;
+              })()}
+            </div>
+          </div>
+
+          <div className="bg-muted p-4 rounded-lg font-mono text-sm">
+            <div className="text-foreground">Projection onto gray axis</div>
+            <div className="text-primary mt-2 text-xs">
+              {(() => {
+                const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
+                const linear = !!linearSaturation;
+                const toLin = (c: number) => { const x = c / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+                const Rm = linear ? toLin(R) : R;
+                const Gm = linear ? toLin(G) : G;
+                const Bm = linear ? toLin(B) : B;
+                const wR = linear ? 0.2126 : 0.299; const wG = linear ? 0.7152 : 0.587; const wB = linear ? 0.0722 : 0.114;
+                const Gray = wR * R + wG * G + wB * B;
+                const dR = R - Gray, dG = G - Gray, dB = B - Gray;
+                const dist = Math.sqrt(dR*dR + dG*dG + dB*dB);
+                return (
+                  <>
+                    <div>Gray point: [{Gray.toFixed(2)}, {Gray.toFixed(2)}, {Gray.toFixed(2)}]</div>
+                    <div>Chroma vector: [R−Gray, G−Gray, B−Gray] = [{dR.toFixed(2)}, {dG.toFixed(2)}, {dB.toFixed(2)}]</div>
+                    <div>Distance to gray axis: ||x − Gray·1||₂ ≈ {dist.toFixed(2)}</div>
+                  </>
+                );
               })()}
             </div>
           </div>
@@ -101,6 +133,13 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Vibrance (adaptive stretch from gray)</h4>
             <RGBCubeVisualizer mode="vibrance" params={{ vibrance, linearSaturation }} selectedRGB={selectedRGB} />
           </Card>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Geometric intuition</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Adaptive radial move from the gray axis (R=G=B): near-axis points move farther, far points move less. This
+              tapers the push as colors get more vivid to avoid clipping and hue shifts.
+            </div>
+          </div>
 
           <div className="bg-muted p-4 rounded-lg font-mono text-sm">
             <div className="text-foreground">Per-pixel factor:</div>
@@ -125,8 +164,15 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <div className="text-primary mt-2 text-xs">
               {(() => {
                 const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
-                const maxC = Math.max(R, G, B);
-                const minC = Math.min(R, G, B);
+                const toLin = (c: number) => {
+                  const x = c / 255;
+                  return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+                };
+                const Rm = linearSaturation ? toLin(R) : R;
+                const Gm = linearSaturation ? toLin(G) : G;
+                const Bm = linearSaturation ? toLin(B) : B;
+                const maxC = Math.max(Rm, Gm, Bm);
+                const minC = Math.min(Rm, Gm, Bm);
                 const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
                 const f = 1 + (vibrance ?? 0) * (1 - sEst);
                 const wR = linearSaturation ? 0.2126 : 0.299;
@@ -141,9 +187,11 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                 return (
                   <>
                     <div>Example [R,G,B] = [{Math.round(R)}, {Math.round(G)}, {Math.round(B)}], s ≈ {(sEst).toFixed(3)}, factor ≈ {f.toFixed(3)}</div>
-                    <div className="mt-2">[R']   [{a}  {e}  {h}]   [R]</div>
-                    <div>[G'] = [{d}  {b}  {h}] × [G]</div>
-                    <div>[B']   [{d}  {e}  {c}]   [B]</div>
+                    <div className="mt-2">[R', G', B']ᵀ = [</div>
+                    <div className="pl-4">[{a}  {e}  {h}]</div>
+                    <div className="pl-4">[{d}  {b}  {h}] × [R, G, B]ᵀ</div>
+                    <div className="pl-4">[{d}  {e}  {c}]</div>
+                    <div>]</div>
                   </>
                 );
               })()}
@@ -153,8 +201,15 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <div className="text-primary mt-2 text-xs">
               {(() => {
                 const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
-                const maxC = Math.max(R, G, B);
-                const minC = Math.min(R, G, B);
+                const toLin = (c: number) => {
+                  const x = c / 255;
+                  return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+                };
+                const Rm = linearSaturation ? toLin(R) : R;
+                const Gm = linearSaturation ? toLin(G) : G;
+                const Bm = linearSaturation ? toLin(B) : B;
+                const maxC = Math.max(Rm, Gm, Bm);
+                const minC = Math.min(Rm, Gm, Bm);
                 const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
                 const f = 1 + (vibrance ?? 0) * (1 - sEst);
                 const wR = linearSaturation ? 0.2126 : 0.299;
@@ -175,6 +230,31 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               })()}
             </div>
           </div>
+
+          <div className="bg-muted p-4 rounded-lg font-mono text-sm">
+            <div className="text-foreground">Projection onto gray axis</div>
+            <div className="text-primary mt-2 text-xs">
+              {(() => {
+                const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
+                const linear = !!linearSaturation;
+                const toLin = (c: number) => { const x = c / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+                const Rm = linear ? toLin(R) : R;
+                const Gm = linear ? toLin(G) : G;
+                const Bm = linear ? toLin(B) : B;
+                const wR = linear ? 0.2126 : 0.299; const wG = linear ? 0.7152 : 0.587; const wB = linear ? 0.0722 : 0.114;
+                const Gray = wR * R + wG * G + wB * B;
+                const dR = R - Gray, dG = G - Gray, dB = B - Gray;
+                const dist = Math.sqrt(dR*dR + dG*dG + dB*dB);
+                return (
+                  <>
+                    <div>Gray point: [{Gray.toFixed(2)}, {Gray.toFixed(2)}, {Gray.toFixed(2)}]</div>
+                    <div>Chroma vector: [R−Gray, G−Gray, B−Gray] = [{dR.toFixed(2)}, {dG.toFixed(2)}, {dB.toFixed(2)}]</div>
+                    <div>Distance to gray axis: ||x − Gray·1||₂ ≈ {dist.toFixed(2)}</div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">What this means</div>
             <div className="text-muted-foreground mt-2 text-xs">
@@ -182,6 +262,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               keeps highlights from clipping. Using linear-light weights better preserves perceived lightness.
             </div>
           </div>
+          
         </TabsContent>
 
         <TabsContent value="contrast" className="space-y-4 mt-4">
@@ -196,6 +277,13 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Contrast (scale around midpoint)</h4>
             <RGBCubeVisualizer mode="contrast" params={{ contrast }} selectedRGB={selectedRGB} />
           </Card>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Geometric intuition</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Scaling about the midpoint (128,128,128): vectors from the midpoint are stretched or compressed. Direction
+              from the midpoint is preserved; only distance changes.
+            </div>
+          </div>
           
           <div className="bg-muted p-4 rounded-lg font-mono text-sm">
             <div className="text-foreground">Original RGB Vector:</div>
@@ -251,12 +339,22 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               g' = (g - 128) × {contrast.toFixed(2)} + 128<br/>
               b' = (b - 128) × {contrast.toFixed(2)} + 128
             </div>
+            <div className="text-muted-foreground mt-3 text-xs">
+              If values are normalized to 0–1, replace 128 with 0.5 instead.
+            </div>
           </div>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">What this means</div>
             <div className="text-muted-foreground mt-2 text-xs">
               Contrast stretches distances from mid-gray (128). Values above 128 move up; values below move down.
               In linear-light, this behaves like a true dynamic‑range change; in sRGB it’s a display‑referred tweak.
+            </div>
+          </div>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Intuition</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Turn it up to make darks darker and lights lighter (more punch); turn it down to soften differences
+              (flatter look). Mid-tones near 128 move the least.
             </div>
           </div>
         </TabsContent>
@@ -273,6 +371,13 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Saturation (interpolate to gray)</h4>
             <RGBCubeVisualizer mode="saturation" params={{ saturation, linearSaturation }} selectedRGB={selectedRGB} />
           </Card>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Geometric intuition</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Motion along the line between the pixel and its projection on the gray axis (R=G=B). Uniform radial change
+              of chroma: the angle around the axis stays the same; only the radius changes.
+            </div>
+          </div>
           
           <div className="bg-muted p-4 rounded-lg font-mono text-sm">
             <div className="text-foreground">Original RGB Vector:</div>
@@ -307,6 +412,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             </div>
             <div className="text-muted-foreground mt-2 text-xs">
               This changes how Gray is derived under the hood without altering the formula above.
+            </div>
+            <div className="text-muted-foreground mt-1 text-xs">
+              Affects Saturation and Vibrance only; Brightness, Contrast, and Hue use sRGB.
             </div>
           </div>
 
@@ -389,12 +497,29 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                 const f = (wB * (1 - s)).toFixed(3);
                 return (
                   <>
-                    <div>[R']   [{a}  {e}  {f}]   [R]</div>
-                    <div>[G'] = [{d}  {b}  {f}] × [G]</div>
-                    <div>[B']   [{d}  {e}  {c}]   [B]</div>
+                    <div>[R', G', B']ᵀ = [</div>
+                    <div className="pl-4">[{a}  {e}  {f}]</div>
+                    <div className="pl-4">[{d}  {b}  {f}] × [R, G, B]ᵀ</div>
+                    <div className="pl-4">[{d}  {e}  {c}]</div>
+                    <div>]</div>
                   </>
                 );
               })()}
+            </div>
+          </div>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Intuition</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Imagine a slider between your pixel and its gray twin: left gives black‑and‑white, middle is original,
+              right makes colors pop. Because we move toward a gray of similar brightness, lightness stays more stable.
+            </div>
+          </div>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Geometric intuition</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              In the RGB cube, the gray axis is the line R=G=B. Saturation moves points along the straight line between a
+              pixel and its projection onto that axis. It scales chroma uniformly: same factor for near‑gray and vivid
+              colors; only the distance from the axis changes, not the direction around it.
             </div>
           </div>
           <div className="bg-muted p-4 rounded-lg text-sm">
@@ -402,6 +527,12 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <div className="text-muted-foreground mt-2 text-xs">
               Saturation pulls each pixel toward or away from its own gray version. At 0× you get gray; at 1× you keep
               the original; above 1× colors intensify. Using linear‑light weights helps keep perceived brightness steady.
+            </div>
+          </div>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Intuition</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              s = 0 &rarr; grayscale; s = 1 &rarr; original; s &gt; 1 &rarr; extra colorful; 0 &lt; s &lt; 1 &rarr; partly desaturated.
             </div>
           </div>
         </TabsContent>
@@ -417,6 +548,13 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube Rotation</h4>
             <RGBCubeVisualizer mode="hue" params={{ hue }} selectedRGB={selectedRGB} />
           </Card>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Geometric intuition</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Rotation around the gray axis (R=G=B): the point keeps the same distance to the axis (radius) while its
+              angle changes. Brightness stays fairly constant; only hue shifts.
+            </div>
+          </div>
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-3">What this means</h4>
             <div className="text-xs space-y-2 text-muted-foreground">
@@ -430,6 +568,13 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               </div>
             </div>
           </Card>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Intuition</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Like turning a color wheel while keeping brightness steady. Reds can become oranges/yellows/greens as you
+              rotate, but neutrals (grays) stay unchanged because they lie on the rotation axis.
+            </div>
+          </div>
           
           <div className="bg-muted p-4 rounded-lg font-mono text-sm overflow-x-auto">
             <div className="text-foreground">Rotation angle: {hue}° = {(hue * Math.PI / 180).toFixed(3)} radians</div>
@@ -482,8 +627,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Why brightness stays stable</div>
             <div className="text-muted-foreground mt-2 text-xs">
-              We rotate around the gray axis, so the gray component of each pixel is kept the same while colors circle
-              around it. That’s why the picture doesn’t get lighter or darker—only the color tone changes.
+              We rotate around the gray axis, so the gray component of each pixel stays about the same while colors
+              circle around it. Perceived brightness stays roughly the same; minor changes can occur near gamut limits
+              and due to display gamma.
             </div>
           </div>
         </TabsContent>
