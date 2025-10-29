@@ -51,13 +51,13 @@ function rotatePoint(x: number, y: number, z: number, yawDeg: number, pitchDeg: 
   return { x: rx, y: ry2, z: rz2 };
 }
 
-// Simple projection from 3D (0..255) to 2D canvas coords using a fixed axonometric basis
-function project(x: number, y: number, z: number, width: number, height: number) {
+// Projection with zoom factor
+function project(x: number, y: number, z: number, width: number, height: number, zoom: number) {
   const sx = 0.707 * (x - y);
   const sy = 0.408 * (x + y) - 0.816 * z;
-  const scale = Math.min(width, height) / 380; // scale cube to fit panel
+  const scale = (Math.min(width, height) / 380) * zoom;
   const px = width / 2 + sx * scale;
-  const py = height / 2 + sy * scale; // center vertically
+  const py = height / 2 + sy * scale;
   return { x: px, y: py };
 }
 
@@ -92,40 +92,42 @@ function drawArrow(
 
 export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [yaw, setYaw] = useState<number>(-35);   // initial view
+  const [yaw, setYaw] = useState<number>(-35);
   const [pitch, setPitch] = useState<number>(20);
+  const [zoom, setZoom] = useState<number>(1);
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
-  // Size chosen to fit the math panel; canvas scales with parent width via CSS
   const width = 320;
   const height = 220;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+    // Set high-DPI backing store while keeping CSS size
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
     // Colors
-    const axisColor = "#94a3b8"; // slate-400
-    const cubeColor = "#475569"; // slate-600
-    const arcColor = "#0ea5e9"; // sky-500
-    const vecOriginal = "#22c55e"; // green-500 (original vector, dotted)
-    const vecRotated = "#d946ef"; // fuchsia-500
+    const axisColor = "#94a3b8";
+    const cubeColor = "#475569";
+    const arcColor = "#0ea5e9";
+    const vecOriginal = "#22c55e";
+    const vecRotated = "#d946ef";
     const original = selectedRGB ?? { r: 200, g: 150, b: 100 };
     const matExact = buildHueRotationMatrix(hue);
     const rotated = multiplyRGB(matExact, original.r, original.g, original.b);
 
-    // Helper to rotate then project
     const rp = (x: number, y: number, z: number) => {
-      // Rotate view around cube center rather than origin
       const cx = 127.5, cy = 127.5, cz = 127.5;
       const r = rotatePoint(x - cx, y - cy, z - cz, yaw, pitch);
-      return project(r.x + cx, r.y + cy, r.z + cz, width, height);
+      return project(r.x + cx, r.y + cy, r.z + cz, width, height, zoom);
     };
 
-    // Cube vertices
     const V = [
       [0, 0, 0],
       [255, 0, 0],
@@ -136,78 +138,56 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
       [255, 255, 255],
       [0, 255, 255],
     ];
-    // Edges by vertex indices
     const E = [
       [0, 1], [1, 2], [2, 3], [3, 0],
       [4, 5], [5, 6], [6, 7], [7, 4],
       [0, 4], [1, 5], [2, 6], [3, 7],
     ];
 
-    // Draw cube
     ctx.lineWidth = 1;
     ctx.strokeStyle = cubeColor;
     const PV = V.map(([x, y, z]) => rp(x, y, z));
-    for (const [a, b] of E) {
-      line(ctx, PV[a], PV[b]);
-    }
+    for (const [a, b] of E) line(ctx, PV[a], PV[b]);
 
-    // Gray axis
     ctx.strokeStyle = axisColor;
     line(ctx, rp(0, 0, 0), rp(255, 255, 255));
 
-    // Colored R/G/B axes from origin to unit corners
     const origin2d = rp(0, 0, 0);
     const pRaxis = rp(255, 0, 0);
     const pGaxis = rp(0, 255, 0);
     const pBaxis = rp(0, 0, 255);
     ctx.lineWidth = 3;
-    // R axis (red)
-    ctx.strokeStyle = "#ef4444"; // red-500
-    line(ctx, origin2d, pRaxis);
-    // G axis (green)
-    ctx.strokeStyle = "#22c55e"; // green-500
-    line(ctx, origin2d, pGaxis);
-    // B axis (blue)
-    ctx.strokeStyle = "#3b82f6"; // blue-500
-    line(ctx, origin2d, pBaxis);
-    // Axis endpoint labels
-    ctx.fillStyle = "#e2e8f0"; // slate-200
+    ctx.strokeStyle = "#ef4444"; line(ctx, origin2d, pRaxis);
+    ctx.strokeStyle = "#22c55e"; line(ctx, origin2d, pGaxis);
+    ctx.strokeStyle = "#3b82f6"; line(ctx, origin2d, pBaxis);
+    ctx.fillStyle = "#e2e8f0";
     ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("R", pRaxis.x + 10, pRaxis.y);
     ctx.fillText("G", pGaxis.x - 10, pGaxis.y);
     ctx.fillText("B", pBaxis.x, pBaxis.y - 10);
 
-    // Plot original and rotated points first (for arrow overlays later)
-
     const p0 = rp(original.r, original.g, original.b);
     const p1 = rp(rotated.r, rotated.g, rotated.b);
-    // Points removed; use arrows only
 
-    // Vectors from origin to points with arrowheads
-    // Original vector as dotted
     ctx.setLineDash([6, 4]);
     drawArrow(ctx, origin2d, p0, vecOriginal, 2, 8);
     ctx.setLineDash([]);
     drawArrow(ctx, origin2d, p1, vecRotated, 2, 8);
 
-    // Angle arc between projected vectors around the origin
     const v0x = p0.x - origin2d.x, v0y = p0.y - origin2d.y;
     const v1x = p1.x - origin2d.x, v1y = p1.y - origin2d.y;
     const a0 = Math.atan2(v0y, v0x);
     const a1 = Math.atan2(v1y, v1x);
-    // Normalize to shortest CCW arc from a0 to a1
     let delta = a1 - a0;
     while (delta <= -Math.PI) delta += 2 * Math.PI;
     while (delta > Math.PI) delta -= 2 * Math.PI;
-    const radius = Math.min(width, height) * 0.12;
+    const radius = Math.min(width, height) * 0.12 * zoom;
     ctx.strokeStyle = arcColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(origin2d.x, origin2d.y, radius, a0, a0 + delta, delta < 0);
     ctx.stroke();
-    // Arrow head at arc end
     const endAngle = a0 + delta;
     const ax = origin2d.x + radius * Math.cos(endAngle);
     const ay = origin2d.y + radius * Math.sin(endAngle);
@@ -218,12 +198,9 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     ctx.closePath();
     ctx.fillStyle = arcColor;
     ctx.fill();
-  }, [hue, selectedRGB, yaw, pitch]);
+  }, [hue, selectedRGB, yaw, pitch, zoom]);
 
-  // Keep exact math (unused in UI here, retained for future use)
-  const angleRad = (hue * Math.PI) / 180;
-
-  // Drag handlers
+  // Drag & zoom handlers
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -239,14 +216,17 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
       setYaw(prev => prev + dx * 0.4);
       setPitch(prev => Math.max(-89, Math.min(89, prev - dy * 0.3)));
     };
-    const onUp = () => {
-      isDraggingRef.current = false;
-      lastPosRef.current = null;
+    const onUp = () => { isDraggingRef.current = false; lastPosRef.current = null; };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      setZoom(prev => Math.max(0.5, Math.min(3, prev * factor)));
     };
     canvas.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    // Touch
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    // Touch events retained (no pinch zoom implemented here)
     const onTDown = (e: TouchEvent) => {
       if (e.touches.length !== 1) return;
       const t = e.touches[0];
@@ -262,10 +242,7 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
       setYaw(prev => prev + dx * 0.4);
       setPitch(prev => Math.max(-89, Math.min(89, prev - dy * 0.3)));
     };
-    const onTUp = () => {
-      isDraggingRef.current = false;
-      lastPosRef.current = null;
-    };
+    const onTUp = () => { isDraggingRef.current = false; lastPosRef.current = null; };
     canvas.addEventListener('touchstart', onTDown, { passive: true });
     window.addEventListener('touchmove', onTMove, { passive: true });
     window.addEventListener('touchend', onTUp);
@@ -274,6 +251,7 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
       canvas.removeEventListener('mousedown', onDown);
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      canvas.removeEventListener('wheel', onWheel);
       canvas.removeEventListener('touchstart', onTDown);
       window.removeEventListener('touchmove', onTMove);
       window.removeEventListener('touchend', onTUp);
@@ -286,7 +264,7 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
         <canvas ref={canvasRef} width={width} height={height} style={{ width: '100%', height: 'auto', cursor: 'grab' }} />
       </div>
       <div className="text-[11px] font-mono text-muted-foreground">
-        Drag to rotate view. Colors: vector(orig) green, vector(rot) fuchsia, arc sky.
+        Drag to rotate view. Scroll to zoom. Colors: vector(orig) green, vector(rot) fuchsia, arc sky.
       </div>
     </div>
   );
