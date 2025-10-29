@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card";
+import HueRotationCube from "@/components/HueRotationCube";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface MathExplanationProps {
@@ -328,6 +329,10 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               Hue rotation is a 3D rotation in RGB color space around the gray axis.
             </p>
           </div>
+          <Card className="p-4 border-border bg-card">
+            <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube Rotation</h4>
+            <HueRotationCube hue={hue} selectedRGB={selectedRGB} />
+          </Card>
           
           <div className="bg-muted p-4 rounded-lg font-mono text-sm overflow-x-auto">
             <div className="text-foreground">Rotation angle: {hue}° = {(hue * Math.PI / 180).toFixed(3)} radians</div>
