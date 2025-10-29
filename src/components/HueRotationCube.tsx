@@ -55,8 +55,9 @@ function line(ctx: CanvasRenderingContext2D, a: { x: number; y: number }, b: { x
 
 export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const width = 360;
-  const height = 260;
+  // Size chosen to fit the math panel; canvas scales with parent width via CSS
+  const width = 320;
+  const height = 220;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -66,9 +67,11 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     ctx.clearRect(0, 0, width, height);
 
     // Colors
-    const axisColor = "#888";
-    const cubeColor = "#666";
+    const axisColor = "#94a3b8"; // slate-400
+    const cubeColor = "#475569"; // slate-600
     const arcColor = "#0ea5e9"; // sky-500
+    const vecOriginal = "#22c55e"; // green-500
+    const vecRotated = "#d946ef"; // fuchsia-500
     const original = selectedRGB ?? { r: 200, g: 150, b: 100 };
     const mat = buildHueRotationMatrix(hue);
     const rotated = multiplyRGB(mat, original.r, original.g, original.b);
@@ -108,7 +111,7 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     ctx.strokeStyle = arcColor;
     ctx.lineWidth = 2;
     ctx.beginPath();
-    const radius = 30;
+    const radius = Math.min(width, height) * 0.12;
     const start = -Math.PI / 3;
     const end = start + (hue * Math.PI) / 180;
     ctx.arc(center.x, center.y, radius, start, end, false);
@@ -128,24 +131,30 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     // Plot original and rotated points
     const p0 = project(original.r, original.g, original.b, width, height);
     const p1 = project(rotated.r, rotated.g, rotated.b, width, height);
-    // Original
+    // Original point
     ctx.fillStyle = `rgb(${Math.round(original.r)}, ${Math.round(original.g)}, ${Math.round(original.b)})`;
     ctx.beginPath();
     ctx.arc(p0.x, p0.y, 4, 0, Math.PI * 2);
     ctx.fill();
-    // Rotated
+    // Rotated point
     ctx.fillStyle = `rgb(${Math.round(rotated.r)}, ${Math.round(rotated.g)}, ${Math.round(rotated.b)})`;
     ctx.beginPath();
     ctx.arc(p1.x, p1.y, 4, 0, Math.PI * 2);
     ctx.fill();
 
-    // Connect line
-    ctx.strokeStyle = arcColor;
-    ctx.lineWidth = 1.5;
-    line(ctx, p0, p1);
+    // Vectors from origin to points
+    const origin2d = project(0, 0, 0, width, height);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = vecOriginal;
+    line(ctx, origin2d, p0);
+    ctx.strokeStyle = vecRotated;
+    line(ctx, origin2d, p1);
   }, [hue, selectedRGB]);
 
   // Matrix block and numbers
+  const angleRad = (hue * Math.PI) / 180;
+  const cosA = Math.cos(angleRad);
+  const sinA = Math.sin(angleRad);
   const mat = buildHueRotationMatrix(hue).map(v => Number(v.toFixed(3)));
   const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
   const out = multiplyRGB(mat, R, G, B);
@@ -153,10 +162,13 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div className="bg-muted rounded-lg p-2 flex items-center justify-center">
-        <canvas ref={canvasRef} width={width} height={height} />
+        <canvas ref={canvasRef} width={width} height={height} style={{ width: '100%', height: 'auto' }} />
       </div>
       <div className="bg-muted rounded-lg p-4 text-xs font-mono space-y-2">
         <div className="text-foreground">Hue rotation: {hue}°</div>
+        <div className="text-foreground">Angle and trig:</div>
+        <div className="text-primary">θ = {(angleRad).toFixed(3)} rad</div>
+        <div className="text-primary">cos θ = {cosA.toFixed(3)}, sin θ = {sinA.toFixed(3)}</div>
         <div className="text-foreground">Rotation matrix (3×3):</div>
         <div className="text-primary">
           [{mat[0]} {mat[1]} {mat[2]}]<br/>
@@ -166,6 +178,7 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
         <div className="text-foreground">Vector multiply (example):</div>
         <div className="text-primary">in = [{Math.round(R)}, {Math.round(G)}, {Math.round(B)}]</div>
         <div className="text-primary">out = [{Math.round(out.r)}, {Math.round(out.g)}, {Math.round(out.b)}]</div>
+        <div className="text-muted-foreground">Colors: vector(orig) green, vector(rot) fuchsia, arc sky.</div>
       </div>
     </div>
   );
