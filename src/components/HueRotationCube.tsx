@@ -69,6 +69,27 @@ function line(ctx: CanvasRenderingContext2D, a: { x: number; y: number }, b: { x
   ctx.stroke();
 }
 
+function drawArrow(
+  ctx: CanvasRenderingContext2D,
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+  color: string,
+  width = 2,
+  headSize = 8
+) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = width;
+  line(ctx, a, b);
+  const angle = Math.atan2(b.y - a.y, b.x - a.x);
+  ctx.beginPath();
+  ctx.moveTo(b.x, b.y);
+  ctx.lineTo(b.x - headSize * Math.cos(angle - Math.PI / 6), b.y - headSize * Math.sin(angle - Math.PI / 6));
+  ctx.lineTo(b.x - headSize * Math.cos(angle + Math.PI / 6), b.y - headSize * Math.sin(angle + Math.PI / 6));
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
 export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState<number>(-35);   // initial view
@@ -156,29 +177,8 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     ctx.fillText("G", pGaxis.x - 10, pGaxis.y);
     ctx.fillText("B", pBaxis.x, pBaxis.y - 10);
 
-    // Rotation arc: draw a small arc around the mid gray point to indicate angle
-    const center = rp(127.5, 127.5, 127.5);
-    ctx.strokeStyle = arcColor;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    const radius = Math.min(width, height) * 0.12;
-    const start = -Math.PI / 3;
-    const end = start + (hue * Math.PI) / 180;
-    ctx.arc(center.x, center.y, radius, start, end, false);
-    ctx.stroke();
+    // Plot original and rotated points first (for arrow overlays later)
 
-    // Arrow head
-    const ax = center.x + radius * Math.cos(end);
-    const ay = center.y + radius * Math.sin(end);
-    ctx.beginPath();
-    ctx.moveTo(ax, ay);
-    ctx.lineTo(ax - 6 * Math.cos(end - 0.3), ay - 6 * Math.sin(end - 0.3));
-    ctx.lineTo(ax - 6 * Math.cos(end + 0.3), ay - 6 * Math.sin(end + 0.3));
-    ctx.closePath();
-    ctx.fillStyle = arcColor;
-    ctx.fill();
-
-    // Plot original and rotated points
     const p0 = rp(original.r, original.g, original.b);
     const p1 = rp(rotated.r, rotated.g, rotated.b);
     // Original point
@@ -192,12 +192,36 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     ctx.arc(p1.x, p1.y, 4, 0, Math.PI * 2);
     ctx.fill();
 
-    // Vectors from origin to points
+    // Vectors from origin to points with arrowheads
+    drawArrow(ctx, origin2d, p0, vecOriginal, 2, 8);
+    drawArrow(ctx, origin2d, p1, vecRotated, 2, 8);
+
+    // Angle arc between projected vectors around the origin
+    const v0x = p0.x - origin2d.x, v0y = p0.y - origin2d.y;
+    const v1x = p1.x - origin2d.x, v1y = p1.y - origin2d.y;
+    const a0 = Math.atan2(v0y, v0x);
+    const a1 = Math.atan2(v1y, v1x);
+    // Normalize to shortest CCW arc from a0 to a1
+    let delta = a1 - a0;
+    while (delta <= -Math.PI) delta += 2 * Math.PI;
+    while (delta > Math.PI) delta -= 2 * Math.PI;
+    const radius = Math.min(width, height) * 0.12;
+    ctx.strokeStyle = arcColor;
     ctx.lineWidth = 2;
-    ctx.strokeStyle = vecOriginal;
-    line(ctx, origin2d, p0);
-    ctx.strokeStyle = vecRotated;
-    line(ctx, origin2d, p1);
+    ctx.beginPath();
+    ctx.arc(origin2d.x, origin2d.y, radius, a0, a0 + delta, delta < 0);
+    ctx.stroke();
+    // Arrow head at arc end
+    const endAngle = a0 + delta;
+    const ax = origin2d.x + radius * Math.cos(endAngle);
+    const ay = origin2d.y + radius * Math.sin(endAngle);
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - 6 * Math.cos(endAngle - Math.PI / 6), ay - 6 * Math.sin(endAngle - Math.PI / 6));
+    ctx.lineTo(ax - 6 * Math.cos(endAngle + Math.PI / 6), ay - 6 * Math.sin(endAngle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fillStyle = arcColor;
+    ctx.fill();
   }, [hue, selectedRGB, yaw, pitch]);
 
   // Matrix block and numbers (exact and display)
