@@ -106,6 +106,30 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     ctx.strokeStyle = axisColor;
     line(ctx, project(0, 0, 0, width, height), project(255, 255, 255, width, height));
 
+    // Colored R/G/B axes from origin to unit corners
+    const origin2d = project(0, 0, 0, width, height);
+    const pRaxis = project(255, 0, 0, width, height);
+    const pGaxis = project(0, 255, 0, width, height);
+    const pBaxis = project(0, 0, 255, width, height);
+    ctx.lineWidth = 3;
+    // R axis (red)
+    ctx.strokeStyle = "#ef4444"; // red-500
+    line(ctx, origin2d, pRaxis);
+    // G axis (green)
+    ctx.strokeStyle = "#22c55e"; // green-500
+    line(ctx, origin2d, pGaxis);
+    // B axis (blue)
+    ctx.strokeStyle = "#3b82f6"; // blue-500
+    line(ctx, origin2d, pBaxis);
+    // Axis endpoint labels
+    ctx.fillStyle = "#e2e8f0"; // slate-200
+    ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("R", pRaxis.x + 10, pRaxis.y);
+    ctx.fillText("G", pGaxis.x - 10, pGaxis.y);
+    ctx.fillText("B", pBaxis.x, pBaxis.y - 10);
+
     // Rotation arc: draw a small arc around the mid gray point to indicate angle
     const center = project(127.5, 127.5, 127.5, width, height);
     ctx.strokeStyle = arcColor;
@@ -143,7 +167,6 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     ctx.fill();
 
     // Vectors from origin to points
-    const origin2d = project(0, 0, 0, width, height);
     ctx.lineWidth = 2;
     ctx.strokeStyle = vecOriginal;
     line(ctx, origin2d, p0);
