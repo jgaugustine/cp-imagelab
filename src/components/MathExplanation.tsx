@@ -350,13 +350,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               In linear-light, this behaves like a true dynamic‑range change; in sRGB it’s a display‑referred tweak.
             </div>
           </div>
-          <div className="bg-muted p-4 rounded-lg text-sm">
-            <div className="text-foreground font-semibold">Intuition</div>
-            <div className="text-muted-foreground mt-2 text-xs">
-              Turn it up to make darks darker and lights lighter (more punch); turn it down to soften differences
-              (flatter look). Mid-tones near 128 move the least.
-            </div>
-          </div>
+          
         </TabsContent>
 
         <TabsContent value="saturation" className="space-y-4 mt-4">
@@ -375,7 +369,8 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <div className="text-foreground font-semibold">Geometric intuition</div>
             <div className="text-muted-foreground mt-2 text-xs">
               Motion along the line between the pixel and its projection on the gray axis (R=G=B). Uniform radial change
-              of chroma: the angle around the axis stays the same; only the radius changes.
+              of chroma: the azimuth (hue angle) around the gray axis stays the same; only the radius (distance to the
+              axis) changes.
             </div>
           </div>
           
@@ -507,13 +502,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               })()}
             </div>
           </div>
-          <div className="bg-muted p-4 rounded-lg text-sm">
-            <div className="text-foreground font-semibold">Intuition</div>
-            <div className="text-muted-foreground mt-2 text-xs">
-              Imagine a slider between your pixel and its gray twin: left gives black‑and‑white, middle is original,
-              right makes colors pop. Because we move toward a gray of similar brightness, lightness stays more stable.
-            </div>
-          </div>
+          
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
             <div className="text-muted-foreground mt-2 text-xs">
@@ -529,12 +518,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               the original; above 1× colors intensify. Using linear‑light weights helps keep perceived brightness steady.
             </div>
           </div>
-          <div className="bg-muted p-4 rounded-lg text-sm">
-            <div className="text-foreground font-semibold">Intuition</div>
-            <div className="text-muted-foreground mt-2 text-xs">
-              s = 0 &rarr; grayscale; s = 1 &rarr; original; s &gt; 1 &rarr; extra colorful; 0 &lt; s &lt; 1 &rarr; partly desaturated.
-            </div>
-          </div>
+          
         </TabsContent>
 
         <TabsContent value="hue" className="space-y-4 mt-4">
