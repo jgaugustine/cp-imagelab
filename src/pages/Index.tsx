@@ -7,6 +7,7 @@ import { ImageCanvas } from "@/components/ImageCanvas";
 import { MathExplanation } from "@/components/MathExplanation";
 import { TransformationType } from "@/types/transformations";
 import { TransformationOrderControls } from "@/components/TransformationOrderControls";
+import { downsizeImageToDataURL } from "@/lib/imageResize";
 export default function Index() {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [brightness, setBrightness] = useState(0);
@@ -15,9 +16,17 @@ export default function Index() {
   const [hue, setHue] = useState(0);
   const [transformOrder, setTransformOrder] = useState<TransformationType[]>(['brightness', 'contrast', 'saturation', 'hue']);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
+    if (!file) return;
+
+    try {
+      const dataUrl = await downsizeImageToDataURL(file, 2048, 0.85);
+      const img = new Image();
+      img.onload = () => setImage(img);
+      img.src = dataUrl;
+    } catch (err) {
+      // Fallback to original file if resize fails
       const reader = new FileReader();
       reader.onload = event => {
         const img = new Image();
@@ -53,7 +62,7 @@ export default function Index() {
                     </Button>
                     <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                   </div>
-                </div> : <ImageCanvas image={image} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} transformOrder={transformOrder} />}
+                </div> : <div className="aspect-video w-full overflow-hidden"><ImageCanvas image={image} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} transformOrder={transformOrder} /></div>}
             </Card>
 
             <Card className="p-6 border-border bg-card">

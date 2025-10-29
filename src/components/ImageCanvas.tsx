@@ -107,13 +107,9 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, tran
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
 
-    // Set canvas size to match image aspect ratio
-    const maxWidth = canvas.parentElement?.clientWidth || 800;
-    const scale = maxWidth / image.width;
+    // Set intrinsic canvas size to image pixels; CSS will scale to fit container
     canvas.width = image.width;
     canvas.height = image.height;
-    canvas.style.width = `${maxWidth}px`;
-    canvas.style.height = `${image.height * scale}px`;
 
     // Draw original image
     ctx.drawImage(image, 0, 0);
@@ -202,7 +198,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, tran
     <>
       <canvas
         ref={canvasRef}
-        className="w-full rounded-lg border border-border cursor-crosshair"
+        className="w-full h-full object-contain rounded-lg border border-border cursor-crosshair"
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       />
