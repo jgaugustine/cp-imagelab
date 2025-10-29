@@ -9,9 +9,10 @@ interface MathExplanationProps {
   vibrance?: number;
   linearSaturation?: boolean;
   onToggleLinearSaturation?: (checked: boolean) => void;
+  selectedRGB?: { r: number; g: number; b: number };
 }
 
-export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation }: MathExplanationProps) {
+export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB }: MathExplanationProps) {
   return (
     <Card className="p-6 border-border bg-card h-fit">
       <h2 className="text-xl font-semibold text-primary mb-4">Mathematical Transformations</h2>
@@ -92,7 +93,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <div className="text-foreground mt-4">Adaptive matrix for current settings:</div>
             <div className="text-primary mt-2 text-xs">
               {(() => {
-                const R = 200, G = 150, B = 100;
+                const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
                 const maxC = Math.max(R, G, B);
                 const minC = Math.min(R, G, B);
                 const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
@@ -108,7 +109,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                 const h = (wB * (1 - f)).toFixed(3);
                 return (
                   <>
-                    <div>Example [R,G,B] = [200, 150, 100], s ≈ {(sEst).toFixed(3)}, factor ≈ {f.toFixed(3)}</div>
+                    <div>Example [R,G,B] = [{Math.round(R)}, {Math.round(G)}, {Math.round(B)}], s ≈ {(sEst).toFixed(3)}, factor ≈ {f.toFixed(3)}</div>
                     <div className="mt-2">[R']   [{a}  {e}  {h}]   [R]</div>
                     <div>[G'] = [{d}  {b}  {h}] × [G]</div>
                     <div>[B']   [{d}  {e}  {c}]   [B]</div>
@@ -120,7 +121,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <div className="text-foreground mt-4">Numeric example result:</div>
             <div className="text-primary mt-2 text-xs">
               {(() => {
-                const R = 200, G = 150, B = 100;
+                const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
                 const maxC = Math.max(R, G, B);
                 const minC = Math.min(R, G, B);
                 const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
@@ -134,10 +135,10 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                 const Bp = Math.max(0, Math.min(255, gray + (B - gray) * f));
                 return (
                   <>
-                    <div>Gray = {wR.toFixed(4)}×{R} + {wG.toFixed(4)}×{G} + {wB.toFixed(4)}×{B} = {gray.toFixed(3)}</div>
-                    <div className="mt-2">R' = {gray.toFixed(3)} + ({R} − {gray.toFixed(3)}) × {f.toFixed(3)} = {Rp.toFixed(3)}</div>
-                    <div>G' = {gray.toFixed(3)} + ({G} − {gray.toFixed(3)}) × {f.toFixed(3)} = {Gp.toFixed(3)}</div>
-                    <div>B' = {gray.toFixed(3)} + ({B} − {gray.toFixed(3)}) × {f.toFixed(3)} = {Bp.toFixed(3)}</div>
+                    <div>Gray = {wR.toFixed(4)}×{Math.round(R)} + {wG.toFixed(4)}×{Math.round(G)} + {wB.toFixed(4)}×{Math.round(B)} = {gray.toFixed(3)}</div>
+                    <div className="mt-2">R' = {gray.toFixed(3)} + ({Math.round(R)} − {gray.toFixed(3)}) × {f.toFixed(3)} = {Rp.toFixed(3)}</div>
+                    <div>G' = {gray.toFixed(3)} + ({Math.round(G)} − {gray.toFixed(3)}) × {f.toFixed(3)} = {Gp.toFixed(3)}</div>
+                    <div>B' = {gray.toFixed(3)} + ({Math.round(B)} − {gray.toFixed(3)}) × {f.toFixed(3)} = {Bp.toFixed(3)}</div>
                   </>
                 );
               })()}
@@ -198,7 +199,12 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           <div className="bg-muted p-4 rounded-lg font-mono text-sm">
             <div className="text-foreground">Original RGB Vector:</div>
             <div className="text-primary mt-2">
-              [R, G, B] = [200, 150, 100]
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                return `[R, G, B] = [${Math.round(R)}, ${Math.round(G)}, ${Math.round(B)}]`;
+              })()}
             </div>
             <div className="text-foreground mt-4">Interpolate with saturation ({saturation.toFixed(2)}):</div>
             <div className="text-secondary mt-2">
@@ -231,7 +237,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               <div className="text-foreground font-semibold">sRGB space (gamma-encoded)</div>
               <div className="text-primary font-mono mt-2 text-xs">
                 {(() => {
-                  const R = 200, G = 150, B = 100;
+                  const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
                   const wR = 0.299, wG = 0.587, wB = 0.114;
                   const gray = wR * R + wG * G + wB * B;
                   const s = saturation;
@@ -240,10 +246,10 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                   const Bp = Math.max(0, Math.min(255, gray + (B - gray) * s));
                   return (
                     <>
-                      <div>Gray = 0.299×{R} + 0.587×{G} + 0.114×{B} = {gray.toFixed(3)}</div>
-                      <div className="mt-2">R' = {gray.toFixed(3)} + ({R} − {gray.toFixed(3)}) × {s.toFixed(2)} = {Rp.toFixed(3)}</div>
-                      <div>G' = {gray.toFixed(3)} + ({G} − {gray.toFixed(3)}) × {s.toFixed(2)} = {Gp.toFixed(3)}</div>
-                      <div>B' = {gray.toFixed(3)} + ({B} − {gray.toFixed(3)}) × {s.toFixed(2)} = {Bp.toFixed(3)}</div>
+                      <div>Gray = 0.299×{Math.round(R)} + 0.587×{Math.round(G)} + 0.114×{Math.round(B)} = {gray.toFixed(3)}</div>
+                      <div className="mt-2">R' = {gray.toFixed(3)} + ({Math.round(R)} − {gray.toFixed(3)}) × {s.toFixed(2)} = {Rp.toFixed(3)}</div>
+                      <div>G' = {gray.toFixed(3)} + ({Math.round(G)} − {gray.toFixed(3)}) × {s.toFixed(2)} = {Gp.toFixed(3)}</div>
+                      <div>B' = {gray.toFixed(3)} + ({Math.round(B)} − {gray.toFixed(3)}) × {s.toFixed(2)} = {Bp.toFixed(3)}</div>
                     </>
                   );
                 })()}
@@ -259,7 +265,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                     return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
                   };
                   const toSRGB = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055);
-                  const R = 200, G = 150, B = 100;
+                  const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
                   const rl = toLin(R), gl = toLin(G), bl = toLin(B);
                   const wR = 0.2126, wG = 0.7152, wB = 0.0722;
                   const Y = wR * rl + wG * gl + wB * bl;
@@ -272,9 +278,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                   const Bp = Math.max(0, Math.min(255, toSRGB(blinP) * 255));
                   return (
                     <>
-                      <div>rₗ = toLinear({R}/255) = {rl.toFixed(6)}</div>
-                      <div>gₗ = toLinear({G}/255) = {gl.toFixed(6)}</div>
-                      <div>bₗ = toLinear({B}/255) = {bl.toFixed(6)}</div>
+                      <div>rₗ = toLinear({Math.round(R)}/255) = {rl.toFixed(6)}</div>
+                      <div>gₗ = toLinear({Math.round(G)}/255) = {gl.toFixed(6)}</div>
+                      <div>bₗ = toLinear({Math.round(B)}/255) = {bl.toFixed(6)}</div>
                       <div className="mt-2">Y = 0.2126×rₗ + 0.7152×gₗ + 0.0722×bₗ = {Y.toFixed(6)}</div>
                       <div className="mt-2">rₗ' = Y + (rₗ − Y) × {s.toFixed(2)} = {rlinP.toFixed(6)}</div>
                       <div>gₗ' = Y + (gₗ − Y) × {s.toFixed(2)} = {glinP.toFixed(6)}</div>

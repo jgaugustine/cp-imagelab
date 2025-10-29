@@ -15,6 +15,8 @@ interface ImageCanvasProps {
   transformOrder: TransformationType[];
   // When true, show the pixel inspector overlay on hover
   enableInspector?: boolean;
+  // Emit original pixel RGB when user clicks on the canvas
+  onPixelSelect?: (rgb: RGB) => void;
 }
 
 interface InspectorData {
@@ -125,7 +127,7 @@ const applyHue = (rgb: RGB, value: number): RGB => {
   };
 };
 
-export function ImageCanvas({ image, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true }: ImageCanvasProps) {
+export function ImageCanvas({ image, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true, onPixelSelect }: ImageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [inspectorData, setInspectorData] = useState<InspectorData | null>(null);
   const originalImageDataRef = useRef<ImageData | null>(null);
@@ -247,6 +249,25 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
     setInspectorData(null);
   };
 
+  const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!onPixelSelect || !canvasRef.current || !originalImageDataRef.current) return;
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = Math.floor((e.clientX - rect.left) * scaleX);
+    const y = Math.floor((e.clientY - rect.top) * scaleY);
+    if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) return;
+    const index = (y * canvas.width + x) * 4;
+    const originalData = originalImageDataRef.current.data;
+    const rgb: RGB = {
+      r: originalData[index],
+      g: originalData[index + 1],
+      b: originalData[index + 2],
+    };
+    onPixelSelect(rgb);
+  };
+
   return (
     <>
       <canvas
@@ -254,6 +275,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
         className="w-full h-full object-contain rounded-lg border border-border cursor-crosshair"
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
+        onClick={handleClick}
       />
       {enableInspector && inspectorData && (
         <PixelInspector

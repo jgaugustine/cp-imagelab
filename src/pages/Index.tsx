@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Upload } from "lucide-react";
 import { ImageCanvas } from "@/components/ImageCanvas";
 import { MathExplanation } from "@/components/MathExplanation";
-import { TransformationType } from "@/types/transformations";
+import { TransformationType, RGB } from "@/types/transformations";
 import { TransformationOrderControls } from "@/components/TransformationOrderControls";
 import { downsizeImageToDataURL } from "@/lib/imageResize";
 export default function Index() {
@@ -17,7 +17,10 @@ export default function Index() {
   const [vibrance, setVibrance] = useState(0);
   const [linearSaturation, setLinearSaturation] = useState(false);
   const [transformOrder, setTransformOrder] = useState<TransformationType[]>(['brightness', 'contrast', 'saturation', 'vibrance', 'hue']);
+  const [selectedRGB, setSelectedRGB] = useState<RGB | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const CanvasAny = ImageCanvas as any;
+  const MathAny = MathExplanation as any;
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -64,7 +67,7 @@ export default function Index() {
                     </Button>
                     <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                   </div>
-                </div> : <div className="aspect-video w-full overflow-hidden"><ImageCanvas image={image} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} linearSaturation={linearSaturation} vibrance={vibrance} transformOrder={transformOrder} /></div>}
+                </div> : <div className="aspect-video w-full overflow-hidden"><CanvasAny image={image} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} linearSaturation={linearSaturation} vibrance={vibrance} transformOrder={transformOrder} onPixelSelect={setSelectedRGB} /></div>}
             </Card>
 
             <Card className="p-6 border-border bg-card">
@@ -125,7 +128,7 @@ export default function Index() {
           <div className="space-y-6">
             <TransformationOrderControls order={transformOrder} onOrderChange={setTransformOrder} />
             
-            <MathExplanation
+            <MathAny
               brightness={brightness}
               contrast={contrast}
               saturation={saturation}
@@ -133,6 +136,7 @@ export default function Index() {
               vibrance={vibrance}
               linearSaturation={linearSaturation}
               onToggleLinearSaturation={setLinearSaturation}
+              selectedRGB={selectedRGB || undefined}
             />
           </div>
         </div>
