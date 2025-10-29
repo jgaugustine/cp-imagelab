@@ -14,7 +14,9 @@ export default function Index() {
   const [contrast, setContrast] = useState(1);
   const [saturation, setSaturation] = useState(1);
   const [hue, setHue] = useState(0);
-  const [transformOrder, setTransformOrder] = useState<TransformationType[]>(['brightness', 'contrast', 'saturation', 'hue']);
+  const [vibrance, setVibrance] = useState(0);
+  const [linearSaturation, setLinearSaturation] = useState(false);
+  const [transformOrder, setTransformOrder] = useState<TransformationType[]>(['brightness', 'contrast', 'saturation', 'vibrance', 'hue']);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -62,7 +64,7 @@ export default function Index() {
                     </Button>
                     <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                   </div>
-                </div> : <div className="aspect-video w-full overflow-hidden"><ImageCanvas image={image} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} transformOrder={transformOrder} /></div>}
+                </div> : <div className="aspect-video w-full overflow-hidden"><ImageCanvas image={image} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} linearSaturation={linearSaturation} vibrance={vibrance} transformOrder={transformOrder} /></div>}
             </Card>
 
             <Card className="p-6 border-border bg-card">
@@ -92,6 +94,14 @@ export default function Index() {
 
                 <div>
                   <label className="text-sm font-medium text-foreground mb-2 block">
+                    Vibrance: {vibrance.toFixed(2)}
+                  </label>
+                  <Slider value={[vibrance]} onValueChange={([v]) => setVibrance(v)} min={0} max={1} step={0.01} />
+                </div>
+
+
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-2 block">
                     Hue Rotation: {hue}°
                   </label>
                   <Slider value={[hue]} onValueChange={([v]) => setHue(v)} min={0} max={360} step={1} />
@@ -102,6 +112,8 @@ export default function Index() {
                 setContrast(1);
                 setSaturation(1);
                 setHue(0);
+                setVibrance(0);
+                setLinearSaturation(false);
               }}>
                   Reset All
                 </Button>
@@ -113,7 +125,15 @@ export default function Index() {
           <div className="space-y-6">
             <TransformationOrderControls order={transformOrder} onOrderChange={setTransformOrder} />
             
-            <MathExplanation brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} />
+            <MathExplanation
+              brightness={brightness}
+              contrast={contrast}
+              saturation={saturation}
+              hue={hue}
+              vibrance={vibrance}
+              linearSaturation={linearSaturation}
+              onToggleLinearSaturation={setLinearSaturation}
+            />
           </div>
         </div>
       </div>

@@ -8,7 +8,13 @@ interface ImageCanvasProps {
   contrast: number;
   saturation: number;
   hue: number;
+  // When true, compute saturation in linear-light space instead of gamma-encoded sRGB
+  linearSaturation?: boolean;
+  // Additional chroma boost for low-saturation colors (0..1 typical)
+  vibrance?: number;
   transformOrder: TransformationType[];
+  // When true, show the pixel inspector overlay on hover
+  enableInspector?: boolean;
 }
 
 interface InspectorData {
@@ -23,6 +29,17 @@ interface InspectorData {
 }
 
 const clamp = (val: number): number => Math.max(0, Math.min(255, val));
+
+// sRGB <-> linear-light helpers
+const srgbToLinear = (channel0to255: number): number => {
+  const x = channel0to255 / 255;
+  return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+};
+
+const linearToSrgb = (linear0to1: number): number => {
+  const y = linear0to1 <= 0.0031308 ? 12.92 * linear0to1 : 1.055 * Math.pow(linear0to1, 1 / 2.4) - 0.055;
+  return y * 255;
+};
 
 const applyBrightness = (rgb: RGB, value: number): RGB => {
   return {
@@ -40,13 +57,45 @@ const applyContrast = (rgb: RGB, value: number): RGB => {
   };
 };
 
-const applySaturation = (rgb: RGB, value: number): RGB => {
-  if (value === 1) return rgb;
+const applySaturationGamma = (rgb: RGB, saturation: number, vibrance: number): RGB => {
+  if (saturation === 1 && vibrance === 0) return rgb;
+  // Rec.601 luma weights in gamma space (approximate)
   const gray = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+  // Estimate per-pixel saturation using max/min
+  const maxC = Math.max(rgb.r, rgb.g, rgb.b);
+  const minC = Math.min(rgb.r, rgb.g, rgb.b);
+  const s = maxC === 0 ? 0 : (maxC - minC) / maxC; // 0..1
+  const vibBoost = vibrance * (1 - s); // more boost for low-sat colors
+  const factor = saturation + vibBoost;
   return {
-    r: clamp(gray + (rgb.r - gray) * value),
-    g: clamp(gray + (rgb.g - gray) * value),
-    b: clamp(gray + (rgb.b - gray) * value)
+    r: clamp(gray + (rgb.r - gray) * factor),
+    g: clamp(gray + (rgb.g - gray) * factor),
+    b: clamp(gray + (rgb.b - gray) * factor)
+  };
+};
+
+const applySaturationLinear = (rgb: RGB, saturation: number, vibrance: number): RGB => {
+  if (saturation === 1 && vibrance === 0) return rgb;
+  // Convert to linear-light
+  const rl = srgbToLinear(rgb.r);
+  const gl = srgbToLinear(rgb.g);
+  const bl = srgbToLinear(rgb.b);
+  // Rec.709 luma weights in linear-light
+  const Y = 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+  // Estimate saturation in linear space
+  const maxL = Math.max(rl, gl, bl);
+  const minL = Math.min(rl, gl, bl);
+  const s = maxL === 0 ? 0 : (maxL - minL) / maxL;
+  const vibBoost = vibrance * (1 - s);
+  const factor = saturation + vibBoost;
+  const rlin = Y + (rl - Y) * factor;
+  const glin = Y + (gl - Y) * factor;
+  const blin = Y + (bl - Y) * factor;
+  // Back to sRGB
+  return {
+    r: clamp(linearToSrgb(rlin)),
+    g: clamp(linearToSrgb(glin)),
+    b: clamp(linearToSrgb(blin))
   };
 };
 
@@ -76,7 +125,7 @@ const applyHue = (rgb: RGB, value: number): RGB => {
   };
 };
 
-export function ImageCanvas({ image, brightness, contrast, saturation, hue, transformOrder }: ImageCanvasProps) {
+export function ImageCanvas({ image, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true }: ImageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [inspectorData, setInspectorData] = useState<InspectorData | null>(null);
   const originalImageDataRef = useRef<ImageData | null>(null);
@@ -95,7 +144,12 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, tran
     switch (type) {
       case 'brightness': return applyBrightness(rgb, value);
       case 'contrast': return applyContrast(rgb, value);
-      case 'saturation': return applySaturation(rgb, value);
+      case 'saturation': return linearSaturation
+        ? applySaturationLinear(rgb, value, vibrance)
+        : applySaturationGamma(rgb, value, vibrance);
+      case 'vibrance': return linearSaturation
+        ? applySaturationLinear(rgb, 1, vibrance)
+        : applySaturationGamma(rgb, 1, vibrance);
       case 'hue': return applyHue(rgb, value);
     }
   };
@@ -104,7 +158,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, tran
     if (!canvasRef.current || !image) return;
 
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const ctx = canvas.getContext("2d", { willReadFrequently: true, alpha: false });
     if (!ctx) return;
 
     // Set intrinsic canvas size to image pixels; CSS will scale to fit container
@@ -118,10 +172,8 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, tran
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
 
-    // Store original image data for inspection
-    if (!originalImageDataRef.current) {
-      originalImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    }
+    // Store original image data for inspection (refresh per image/params)
+    originalImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     // Apply transformations in user-defined order
     for (let i = 0; i < data.length; i += 4) {
@@ -142,9 +194,10 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, tran
     }
 
     ctx.putImageData(imageData, 0, 0);
-  }, [image, brightness, contrast, saturation, hue, transformOrder]);
+  }, [image, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!enableInspector) return;
     const canvas = canvasRef.current;
     if (!canvas || !originalImageDataRef.current) return;
 
@@ -202,12 +255,13 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, tran
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       />
-      {inspectorData && (
+      {enableInspector && inspectorData && (
         <PixelInspector
           {...inspectorData}
           brightness={brightness}
           contrast={contrast}
           saturation={saturation}
+          vibrance={vibrance}
           hue={hue}
         />
       )}

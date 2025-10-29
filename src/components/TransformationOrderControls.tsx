@@ -1,7 +1,7 @@
 import { DndContext, closestCenter, DragEndEvent, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Sun, Circle, Palette, Rainbow, RotateCcw } from 'lucide-react';
+import { Sun, Circle, Palette, Rainbow, Droplet, RotateCcw } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TransformationType, TRANSFORM_LABELS } from '@/types/transformations';
@@ -24,6 +24,8 @@ const getIcon = (type: TransformationType) => {
       return <Circle className="w-4 h-4" />;
     case 'saturation':
       return <Palette className="w-4 h-4" />;
+    case 'vibrance':
+      return <Droplet className="w-4 h-4" />;
     case 'hue':
       return <Rainbow className="w-4 h-4" />;
   }
@@ -89,7 +91,7 @@ export function TransformationOrderControls({ order, onOrderChange }: Transforma
   };
 
   const handleReset = () => {
-    onOrderChange(['brightness', 'contrast', 'saturation', 'hue']);
+    onOrderChange(['brightness', 'contrast', 'saturation', 'vibrance', 'hue']);
   };
 
   return (

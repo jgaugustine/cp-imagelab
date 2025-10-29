@@ -21,6 +21,10 @@ export async function downsizeImageToDataURL(
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
   ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+  // Release the bitmap to avoid holding GPU memory
+  try {
+    (bitmap as unknown as { close?: () => void }).close?.();
+  } catch {}
 
   // Always export as JPEG per requirements (quality 0.85 by default)
   return canvas.toDataURL("image/jpeg", quality);

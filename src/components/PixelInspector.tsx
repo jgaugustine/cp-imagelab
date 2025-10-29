@@ -11,6 +11,7 @@ interface PixelInspectorProps {
   brightness: number;
   contrast: number;
   saturation: number;
+  vibrance: number;
   hue: number;
   cursorX: number;
   cursorY: number;
@@ -26,6 +27,7 @@ export function PixelInspector({
   brightness,
   contrast,
   saturation,
+  vibrance,
   hue,
   cursorX,
   cursorY,
@@ -43,6 +45,7 @@ export function PixelInspector({
       brightness: 'Brightness',
       contrast: 'Contrast',
       saturation: 'Saturation',
+      vibrance: 'Vibrance',
       hue: 'Hue'
     };
     return labels[type];
@@ -53,6 +56,7 @@ export function PixelInspector({
       case 'brightness': return brightness > 0 ? `+${brightness}` : `${brightness}`;
       case 'contrast': return `×${contrast.toFixed(2)}`;
       case 'saturation': return `×${saturation.toFixed(2)}`;
+      case 'vibrance': return `${vibrance.toFixed(2)}`;
       case 'hue': return `${hue}°`;
     }
   };
@@ -62,6 +66,7 @@ export function PixelInspector({
       case 'brightness': return brightness !== 0;
       case 'contrast': return contrast !== 1;
       case 'saturation': return saturation !== 1;
+      case 'vibrance': return vibrance !== 0;
       case 'hue': return hue !== 0;
     }
   };

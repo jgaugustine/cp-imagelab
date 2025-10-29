@@ -6,18 +6,22 @@ interface MathExplanationProps {
   contrast: number;
   saturation: number;
   hue: number;
+  vibrance?: number;
+  linearSaturation?: boolean;
+  onToggleLinearSaturation?: (checked: boolean) => void;
 }
 
-export function MathExplanation({ brightness, contrast, saturation, hue }: MathExplanationProps) {
+export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation }: MathExplanationProps) {
   return (
     <Card className="p-6 border-border bg-card h-fit">
       <h2 className="text-xl font-semibold text-primary mb-4">Mathematical Transformations</h2>
       
       <Tabs defaultValue="brightness" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4">
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
           <TabsTrigger value="brightness">Brightness</TabsTrigger>
           <TabsTrigger value="contrast">Contrast</TabsTrigger>
           <TabsTrigger value="saturation">Saturation</TabsTrigger>
+          <TabsTrigger value="vibrance">Vibrance</TabsTrigger>
           <TabsTrigger value="hue">Hue</TabsTrigger>
         </TabsList>
 
@@ -54,6 +58,63 @@ export function MathExplanation({ brightness, contrast, saturation, hue }: MathE
               r' = r + {brightness}<br/>
               g' = g + {brightness}<br/>
               b' = b + {brightness}
+            </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="vibrance" className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-foreground">Adaptive Chroma Boost</h3>
+            <p className="text-sm text-muted-foreground">
+              Vibrance increases saturation more for low-saturation pixels and less for already vivid areas, preserving skin tones and avoiding clipping.
+            </p>
+          </div>
+
+          <div className="bg-muted p-4 rounded-lg font-mono text-sm">
+            <div className="text-foreground">Per-pixel factor:</div>
+            <div className="text-primary mt-2">
+              factor = 1 + V × (1 − s)
+            </div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              where s ≈ (max(R,G,B) − min(R,G,B)) / max(R,G,B) and V is vibrance.
+            </div>
+
+            <div className="text-foreground mt-4">Interpolation:</div>
+            <div className="text-secondary mt-2">
+              R' = Gray + (R − Gray) × factor<br/>
+              G' = Gray + (G − Gray) × factor<br/>
+              B' = Gray + (B − Gray) × factor
+            </div>
+            <div className="text-muted-foreground mt-3 text-xs">
+              s is clamped to [0,1]. The same neutral Gray definition as Saturation is used.
+            </div>
+
+            <div className="text-foreground mt-4">Adaptive matrix for current settings:</div>
+            <div className="text-primary mt-2 text-xs">
+              {(() => {
+                const R = 200, G = 150, B = 100;
+                const maxC = Math.max(R, G, B);
+                const minC = Math.min(R, G, B);
+                const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
+                const f = 1 + (vibrance ?? 0) * (1 - sEst);
+                const wR = linearSaturation ? 0.2126 : 0.299;
+                const wG = linearSaturation ? 0.7152 : 0.587;
+                const wB = linearSaturation ? 0.0722 : 0.114;
+                const a = (f + wR * (1 - f)).toFixed(3);
+                const b = (f + wG * (1 - f)).toFixed(3);
+                const c = (f + wB * (1 - f)).toFixed(3);
+                const d = (wR * (1 - f)).toFixed(3);
+                const e = (wG * (1 - f)).toFixed(3);
+                const h = (wB * (1 - f)).toFixed(3);
+                return (
+                  <>
+                    <div>Example [R,G,B] = [200, 150, 100], s ≈ {(sEst).toFixed(3)}, factor ≈ {f.toFixed(3)}</div>
+                    <div className="mt-2">[R']   [{a}  {e}  {h}]   [R]</div>
+                    <div>[G'] = [{d}  {b}  {h}] × [G]</div>
+                    <div>[B']   [{d}  {e}  {c}]   [B]</div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </TabsContent>
@@ -104,7 +165,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue }: MathE
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-foreground">Color Space Transformation</h3>
             <p className="text-sm text-muted-foreground">
-              Saturation adjusts color intensity by interpolating between the pixel color and its grayscale value.
+              Saturation adjusts color intensity by interpolating between the pixel color and a neutral gray for that pixel.
             </p>
           </div>
           
@@ -113,40 +174,51 @@ export function MathExplanation({ brightness, contrast, saturation, hue }: MathE
             <div className="text-primary mt-2">
               [R, G, B] = [200, 150, 100]
             </div>
-            
-            <div className="text-foreground mt-4">Calculate Luminance (weighted average):</div>
-            <div className="text-primary mt-2">
-              Gray = 0.299×R + 0.587×G + 0.114×B<br/>
-              = 0.299×200 + 0.587×150 + 0.114×100<br/>
-              = {(0.299 * 200 + 0.587 * 150 + 0.114 * 100).toFixed(1)}
-            </div>
-            
             <div className="text-foreground mt-4">Interpolate with saturation ({saturation.toFixed(2)}):</div>
             <div className="text-secondary mt-2">
-              R' = Gray + (R - Gray) × {saturation.toFixed(2)}<br/>
-              G' = Gray + (G - Gray) × {saturation.toFixed(2)}<br/>
-              B' = Gray + (B - Gray) × {saturation.toFixed(2)}
+              R' = Gray + (R - Gray) × saturation<br/>
+              G' = Gray + (G - Gray) × saturation<br/>
+              B' = Gray + (B - Gray) × saturation
             </div>
           </div>
 
           <div className="bg-muted p-4 rounded-lg text-sm">
-            <div className="text-muted-foreground">
-              Matrix form (weighted desaturation):
+            <div className="text-muted-foreground mb-2">Computation space</div>
+            <div className="flex items-center gap-2 text-sm">
+              <input
+                id="linear-sat-toggle"
+                type="checkbox"
+                checked={!!linearSaturation}
+                onChange={(e) => onToggleLinearSaturation?.(e.target.checked)}
+              />
+              <label htmlFor="linear-sat-toggle" className="text-foreground">
+                Compute saturation in linear color space
+              </label>
             </div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              This changes how Gray is derived under the hood without altering the formula above.
+            </div>
+          </div>
+
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-muted-foreground">Matrix form (adapts to slider and color space):</div>
             <div className="text-primary font-mono mt-2 text-xs">
               {(() => {
                 const s = saturation;
-                const a = (s + 0.299 * (1 - s)).toFixed(3);
-                const b = (s + 0.587 * (1 - s)).toFixed(3);
-                const c = (s + 0.114 * (1 - s)).toFixed(3);
-                const d = (0.299 * (1 - s)).toFixed(3);
-                const e = (0.587 * (1 - s)).toFixed(3);
-                const f = (0.114 * (1 - s)).toFixed(3);
+                const wR = linearSaturation ? 0.2126 : 0.299;
+                const wG = linearSaturation ? 0.7152 : 0.587;
+                const wB = linearSaturation ? 0.0722 : 0.114;
+                const a = (s + wR * (1 - s)).toFixed(3);
+                const b = (s + wG * (1 - s)).toFixed(3);
+                const c = (s + wB * (1 - s)).toFixed(3);
+                const d = (wR * (1 - s)).toFixed(3);
+                const e = (wG * (1 - s)).toFixed(3);
+                const f = (wB * (1 - s)).toFixed(3);
                 return (
                   <>
-                    <div>[R&apos;]   [{a}  {e}  {f}]   [R]</div>
-                    <div>[G&apos;] = [{d}  {b}  {f}] × [G]</div>
-                    <div>[B&apos;]   [{d}  {e}  {c}]   [B]</div>
+                    <div>[R']   [{a}  {e}  {f}]   [R]</div>
+                    <div>[G'] = [{d}  {b}  {f}] × [G]</div>
+                    <div>[B']   [{d}  {e}  {c}]   [B]</div>
                   </>
                 );
               })()}
