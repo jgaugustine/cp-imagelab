@@ -334,10 +334,10 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <HueRotationCube hue={hue} selectedRGB={selectedRGB} />
           </Card>
           <Card className="p-4 border-border bg-card">
-            <h4 className="text-sm font-semibold text-foreground mb-2">Why the 1/3 and √(1/3) terms?</h4>
+            <h4 className="text-sm font-semibold text-foreground mb-2">Derivation of 1/3 and √(1/3) terms</h4>
             <div className="text-xs space-y-2">
               <div className="text-foreground">
-                Rotate around the gray axis by changing basis to an orthonormal RGB frame, rotate in the chroma plane, then map back:
+                The hue-rotation matrix arises from rotating around the gray axis using an orthonormal RGB basis, rotating within the chroma plane, and mapping back to RGB:
               </div>
               <div className="bg-muted rounded p-3 font-mono text-primary">
                 u = (1, 1, 1) / √3<br/>
@@ -361,6 +361,46 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               </div>
               <div className="text-muted-foreground">
                 The 1/3 terms come from the u uᵀ = (1/3)·11ᵀ projection (gray axis). The ±√(1/3)·sinθ terms result from mixing in the rotated chroma basis (v, w) when transforming back to RGB. This construction preserves luminance while rotating hue.
+              </div>
+            </div>
+          </Card>
+          <Card className="p-4 border-border bg-card">
+            <h4 className="text-sm font-semibold text-foreground mb-2">u, v, w basis and mapping</h4>
+            <div className="text-xs space-y-2">
+              <div className="text-foreground">
+                Define an orthonormal basis of RGB with the gray axis u and two chroma axes v, w:
+              </div>
+              <div className="bg-muted rounded p-3 font-mono text-primary">
+                u = (1, 1, 1) / √3  (gray / luminance axis)<br/>
+                v = (1, −1, 0) / √2  (chroma axis 1)<br/>
+                w = (1, 1, −2) / √6  (chroma axis 2)
+              </div>
+              <div className="text-foreground">
+                Stack these basis vectors as columns to form the change-of-basis matrix B (from RGB to (u,v,w)):
+              </div>
+              <div className="bg-muted rounded p-3 font-mono text-primary text-[11px]">
+                B = [ u v w ] =
+                \n[ 1/√3   1/√2   1/√6 ]
+                \n[ 1/√3  −1/√2   1/√6 ]
+                \n[ 1/√3    0    −2/√6 ]
+              </div>
+              <div className="text-foreground">
+                Rotate only in the chroma plane with R(θ) (u fixed, v–w rotated):
+              </div>
+              <div className="bg-muted rounded p-3 font-mono text-primary text-[11px]">
+                R(θ) =
+                \n[ 1    0        0     ]
+                \n[ 0  cosθ   −sinθ ]
+                \n[ 0  sinθ    cosθ ]
+              </div>
+              <div className="text-foreground">
+                Map back to RGB with the similarity transform:
+              </div>
+              <div className="bg-muted rounded p-3 font-mono text-primary text-[11px]">
+                M(θ) = B · R(θ) · Bᵀ
+              </div>
+              <div className="text-muted-foreground">
+                Multiplying out B · R(θ) · Bᵀ yields the RGB-space hue rotation used above (diagonals = cosθ + (1−cosθ)/3; off‑diagonals = (1/3)(1−cosθ) ± √(1/3)·sinθ). This preserves the u component (luminance) while rotating chroma.
               </div>
             </div>
           </Card>
