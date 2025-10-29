@@ -181,16 +181,7 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
 
     const p0 = rp(original.r, original.g, original.b);
     const p1 = rp(rotated.r, rotated.g, rotated.b);
-    // Original point
-    ctx.fillStyle = `rgb(${Math.round(original.r)}, ${Math.round(original.g)}, ${Math.round(original.b)})`;
-    ctx.beginPath();
-    ctx.arc(p0.x, p0.y, 4, 0, Math.PI * 2);
-    ctx.fill();
-    // Rotated point
-    ctx.fillStyle = `rgb(${Math.round(rotated.r)}, ${Math.round(rotated.g)}, ${Math.round(rotated.b)})`;
-    ctx.beginPath();
-    ctx.arc(p1.x, p1.y, 4, 0, Math.PI * 2);
-    ctx.fill();
+    // Points removed; use arrows only
 
     // Vectors from origin to points with arrowheads
     drawArrow(ctx, origin2d, p0, vecOriginal, 2, 8);
