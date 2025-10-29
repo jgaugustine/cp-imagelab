@@ -43,7 +43,12 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           <div className="bg-muted p-4 rounded-lg font-mono text-sm">
             <div className="text-foreground">Original RGB Vector:</div>
             <div className="text-primary mt-2">
-              [R, G, B] = [{Math.round(128)}, {Math.round(128)}, {Math.round(128)}]
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                return `[R, G, B] = [${Math.round(R)}, ${Math.round(G)}, ${Math.round(B)}]`;
+              })()}
             </div>
             
             <div className="text-foreground mt-4">Add Brightness Value:</div>
@@ -53,7 +58,15 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             
             <div className="text-foreground mt-4">Result:</div>
             <div className="text-secondary mt-2">
-              = [{Math.max(0, Math.min(255, 128 + brightness))}, {Math.max(0, Math.min(255, 128 + brightness))}, {Math.max(0, Math.min(255, 128 + brightness))}]
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                const Rp = Math.max(0, Math.min(255, R + brightness));
+                const Gp = Math.max(0, Math.min(255, G + brightness));
+                const Bp = Math.max(0, Math.min(255, B + brightness));
+                return `= [${Rp.toFixed(0)}, ${Gp.toFixed(0)}, ${Bp.toFixed(0)}]`;
+              })()}
             </div>
           </div>
 
@@ -173,22 +186,45 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           <div className="bg-muted p-4 rounded-lg font-mono text-sm">
             <div className="text-foreground">Original RGB Vector:</div>
             <div className="text-primary mt-2">
-              [R, G, B] = [180, 140, 100]
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                return `[R, G, B] = [${Math.round(R)}, ${Math.round(G)}, ${Math.round(B)}]`;
+              })()}
             </div>
             
             <div className="text-foreground mt-4">Subtract midpoint (128):</div>
             <div className="text-primary mt-2">
-              = [52, 12, -28]
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                return `= [${(R - 128).toFixed(0)}, ${(G - 128).toFixed(0)}, ${(B - 128).toFixed(0)}]`;
+              })()}
             </div>
             
             <div className="text-foreground mt-4">Multiply by contrast ({contrast.toFixed(2)}):</div>
             <div className="text-primary mt-2">
-              × {contrast.toFixed(2)} = [{(52 * contrast).toFixed(1)}, {(12 * contrast).toFixed(1)}, {(-28 * contrast).toFixed(1)}]
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                return `× ${contrast.toFixed(2)} = [${((R - 128) * contrast).toFixed(1)}, ${((G - 128) * contrast).toFixed(1)}, ${((B - 128) * contrast).toFixed(1)}]`;
+              })()}
             </div>
             
             <div className="text-foreground mt-4">Add midpoint back:</div>
             <div className="text-secondary mt-2">
-              + 128 = [{Math.max(0, Math.min(255, 52 * contrast + 128)).toFixed(0)}, {Math.max(0, Math.min(255, 12 * contrast + 128)).toFixed(0)}, {Math.max(0, Math.min(255, -28 * contrast + 128)).toFixed(0)}]
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                const Rp = Math.max(0, Math.min(255, (R - 128) * contrast + 128));
+                const Gp = Math.max(0, Math.min(255, (G - 128) * contrast + 128));
+                const Bp = Math.max(0, Math.min(255, (B - 128) * contrast + 128));
+                return `+ 128 = [${Rp.toFixed(0)}, ${Gp.toFixed(0)}, ${Bp.toFixed(0)}]`;
+              })()}
             </div>
           </div>
 
