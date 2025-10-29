@@ -111,7 +111,7 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     const axisColor = "#94a3b8"; // slate-400
     const cubeColor = "#475569"; // slate-600
     const arcColor = "#0ea5e9"; // sky-500
-    const vecOriginal = "#94a3b8"; // slate-400 (original vector, dotted)
+    const vecOriginal = "#22c55e"; // green-500 (original vector, dotted)
     const vecRotated = "#d946ef"; // fuchsia-500
     const original = selectedRGB ?? { r: 200, g: 150, b: 100 };
     const matExact = buildHueRotationMatrix(hue);
@@ -186,7 +186,7 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     // Points removed; use arrows only
 
     // Vectors from origin to points with arrowheads
-    // Original vector as dotted gray
+    // Original vector as dotted
     ctx.setLineDash([6, 4]);
     drawArrow(ctx, origin2d, p0, vecOriginal, 2, 8);
     ctx.setLineDash([]);
@@ -220,14 +220,8 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
     ctx.fill();
   }, [hue, selectedRGB, yaw, pitch]);
 
-  // Matrix block and numbers (exact and display)
+  // Keep exact math (unused in UI here, retained for future use)
   const angleRad = (hue * Math.PI) / 180;
-  const cosA = Math.cos(angleRad);
-  const sinA = Math.sin(angleRad);
-  const matExact = buildHueRotationMatrix(hue);
-  const matDisp = matExact.map(v => Number(v.toFixed(3)));
-  const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
-  const out = multiplyRGB(matExact, R, G, B);
 
   // Drag handlers
   useEffect(() => {
@@ -287,25 +281,12 @@ export function HueRotationCube({ hue, selectedRGB }: HueRotationCubeProps) {
   }, []);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div className="space-y-2">
       <div className="bg-muted rounded-lg p-2 flex items-center justify-center">
         <canvas ref={canvasRef} width={width} height={height} style={{ width: '100%', height: 'auto', cursor: 'grab' }} />
       </div>
-      <div className="bg-muted rounded-lg p-4 text-xs font-mono space-y-2">
-        <div className="text-foreground">Hue rotation: {hue}°</div>
-        <div className="text-foreground">Angle and trig:</div>
-        <div className="text-primary">θ = {(angleRad).toFixed(3)} rad</div>
-        <div className="text-primary">cos θ = {cosA.toFixed(3)}, sin θ = {sinA.toFixed(3)}</div>
-        <div className="text-foreground">Rotation matrix (3×3):</div>
-        <div className="text-primary">
-          [{matDisp[0]} {matDisp[1]} {matDisp[2]}]<br/>
-          [{matDisp[3]} {matDisp[4]} {matDisp[5]}]<br/>
-          [{matDisp[6]} {matDisp[7]} {matDisp[8]}]
-        </div>
-        <div className="text-foreground">Vector multiply (example):</div>
-        <div className="text-primary">in = [{Math.round(R)}, {Math.round(G)}, {Math.round(B)}]</div>
-        <div className="text-primary">out = [{Math.round(out.r)}, {Math.round(out.g)}, {Math.round(out.b)}]</div>
-        <div className="text-muted-foreground">Drag to rotate view. Colors: vector(orig) green, vector(rot) fuchsia, arc sky.</div>
+      <div className="text-[11px] font-mono text-muted-foreground">
+        Drag to rotate view. Colors: vector(orig) green, vector(rot) fuchsia, arc sky.
       </div>
     </div>
   );
