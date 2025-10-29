@@ -263,6 +263,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
           saturation={saturation}
           vibrance={vibrance}
           hue={hue}
+          linearSaturation={linearSaturation}
         />
       )}
     </>

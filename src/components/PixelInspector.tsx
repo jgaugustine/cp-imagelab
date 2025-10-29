@@ -15,6 +15,7 @@ interface PixelInspectorProps {
   hue: number;
   cursorX: number;
   cursorY: number;
+  linearSaturation?: boolean;
 }
 
 export function PixelInspector({
@@ -31,6 +32,7 @@ export function PixelInspector({
   hue,
   cursorX,
   cursorY,
+  linearSaturation = false,
 }: PixelInspectorProps) {
   const rgbToHex = (r: number, g: number, b: number) => {
     return `#${[r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
@@ -70,6 +72,73 @@ export function PixelInspector({
       case 'hue': return hue !== 0;
     }
   };
+
+  // Helpers to re-simulate pipeline up to a step to compute Gray/Y for that input
+  const clamp = (val: number): number => Math.max(0, Math.min(255, val));
+  const toLin = (c: number) => {
+    const x = c / 255;
+    return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+  };
+  const toSRGB = (c: number) => (c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055) * 255;
+
+  const applyBrightnessLoc = (rgb: RGB): RGB => ({ r: clamp(rgb.r + brightness), g: clamp(rgb.g + brightness), b: clamp(rgb.b + brightness) });
+  const applyContrastLoc = (rgb: RGB): RGB => ({ r: clamp((rgb.r - 128) * contrast + 128), g: clamp((rgb.g - 128) * contrast + 128), b: clamp((rgb.b - 128) * contrast + 128) });
+  const applySaturationGammaLoc = (rgb: RGB, sat: number, vib: number): RGB => {
+    const gray = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+    const maxC = Math.max(rgb.r, rgb.g, rgb.b);
+    const minC = Math.min(rgb.r, rgb.g, rgb.b);
+    const s = maxC === 0 ? 0 : (maxC - minC) / maxC;
+    const factor = sat + vib * (1 - s);
+    return { r: clamp(gray + (rgb.r - gray) * factor), g: clamp(gray + (rgb.g - gray) * factor), b: clamp(gray + (rgb.b - gray) * factor) };
+  };
+  const applySaturationLinearLoc = (rgb: RGB, sat: number, vib: number): RGB => {
+    const rl = toLin(rgb.r), gl = toLin(rgb.g), bl = toLin(rgb.b);
+    const Y = 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+    const maxL = Math.max(rl, gl, bl);
+    const minL = Math.min(rl, gl, bl);
+    const s = maxL === 0 ? 0 : (maxL - minL) / maxL;
+    const factor = sat + vib * (1 - s);
+    const rlin = Y + (rl - Y) * factor;
+    const glin = Y + (gl - Y) * factor;
+    const blin = Y + (bl - Y) * factor;
+    return { r: clamp(toSRGB(rlin)), g: clamp(toSRGB(glin)), b: clamp(toSRGB(blin)) };
+  };
+  const applyHueLoc = (rgb: RGB): RGB => {
+    if (hue === 0) return rgb;
+    const angle = (hue * Math.PI) / 180;
+    const cosA = Math.cos(angle);
+    const sinA = Math.sin(angle);
+    const m = [
+      cosA + (1 - cosA) / 3,
+      (1 / 3) * (1 - cosA) - Math.sqrt(1 / 3) * sinA,
+      (1 / 3) * (1 - cosA) + Math.sqrt(1 / 3) * sinA,
+      (1 / 3) * (1 - cosA) + Math.sqrt(1 / 3) * sinA,
+      cosA + (1 / 3) * (1 - cosA),
+      (1 / 3) * (1 - cosA) - Math.sqrt(1 / 3) * sinA,
+      (1 / 3) * (1 - cosA) - Math.sqrt(1 / 3) * sinA,
+      (1 / 3) * (1 - cosA) + Math.sqrt(1 / 3) * sinA,
+      cosA + (1 / 3) * (1 - cosA),
+    ];
+    return {
+      r: clamp(rgb.r * m[0] + rgb.g * m[1] + rgb.b * m[2]),
+      g: clamp(rgb.r * m[3] + rgb.g * m[4] + rgb.b * m[5]),
+      b: clamp(rgb.r * m[6] + rgb.g * m[7] + rgb.b * m[8]),
+    };
+  };
+
+  const simulateUpToIndex = (targetIndex: number): RGB => {
+    let color = originalRGB;
+    for (let i = 0; i < targetIndex; i++) {
+      const t = transformOrder[i];
+      if (t === 'brightness') color = applyBrightnessLoc(color);
+      else if (t === 'contrast') color = applyContrastLoc(color);
+      else if (t === 'saturation') color = linearSaturation ? applySaturationLinearLoc(color, saturation, vibrance) : applySaturationGammaLoc(color, saturation, vibrance);
+      else if (t === 'vibrance') color = linearSaturation ? applySaturationLinearLoc(color, 1, vibrance) : applySaturationGammaLoc(color, 1, vibrance);
+      else if (t === 'hue') color = applyHueLoc(color);
+    }
+    return color;
+  };
+
 
   // Position inspector near cursor, avoiding edges
   const offsetX = 20;
@@ -151,6 +220,21 @@ export function PixelInspector({
                       {formatRGB(stepRGB)}
                     </div>
                   </div>
+                  {(transformType === 'saturation' || transformType === 'vibrance') && (
+                    <div className="text-[10px] font-mono text-muted-foreground">
+                      {(() => {
+                        const inputColor = simulateUpToIndex(index);
+                        if (!linearSaturation) {
+                          const gray = 0.299 * inputColor.r + 0.587 * inputColor.g + 0.114 * inputColor.b;
+                          return `Gray = 0.299×${Math.round(inputColor.r)} + 0.587×${Math.round(inputColor.g)} + 0.114×${Math.round(inputColor.b)} = ${gray.toFixed(2)}`;
+                        } else {
+                          const rl = toLin(inputColor.r), gl = toLin(inputColor.g), bl = toLin(inputColor.b);
+                          const Y = 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+                          return `Y = 0.2126×rₗ + 0.7152×gₗ + 0.0722×bₗ = ${Y.toFixed(4)}`;
+                        }
+                      })()}
+                    </div>
+                  )}
                 </div>
               );
             })}
