@@ -220,21 +220,7 @@ export function PixelInspector({
                       {formatRGB(stepRGB)}
                     </div>
                   </div>
-                  {(transformType === 'saturation' || transformType === 'vibrance') && (
-                    <div className="text-[10px] font-mono text-muted-foreground">
-                      {(() => {
-                        const inputColor = simulateUpToIndex(index);
-                        if (!linearSaturation) {
-                          const gray = 0.299 * inputColor.r + 0.587 * inputColor.g + 0.114 * inputColor.b;
-                          return `Gray = 0.299×${Math.round(inputColor.r)} + 0.587×${Math.round(inputColor.g)} + 0.114×${Math.round(inputColor.b)} = ${gray.toFixed(2)}`;
-                        } else {
-                          const rl = toLin(inputColor.r), gl = toLin(inputColor.g), bl = toLin(inputColor.b);
-                          const Y = 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
-                          return `Y = 0.2126×rₗ + 0.7152×gₗ + 0.0722×bₗ = ${Y.toFixed(4)}`;
-                        }
-                      })()}
-                    </div>
-                  )}
+                  {/* Gray/Y readout intentionally omitted per requirements */}
                 </div>
               );
             })}
