@@ -123,9 +123,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
         <TabsContent value="vibrance" className="space-y-4 mt-4">
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-foreground">Adaptive Chroma Boost</h3>
+            <h3 className="text-lg font-semibold text-foreground">Adaptive Chroma Adjustment</h3>
             <p className="text-sm text-muted-foreground">
-              Vibrance increases saturation more for low-saturation pixels and less for already vivid areas, preserving skin tones and avoiding clipping.
+              Vibrance adjusts saturation adaptively: positive values boost low‑chroma pixels more than high‑chroma ones; negative values reduce low‑chroma pixels more gently, preserving skin tones and avoiding clipping.
             </p>
           </div>
 
@@ -147,7 +147,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               factor = 1 + V × (1 − s)
             </div>
             <div className="text-muted-foreground mt-2 text-xs">
-              where s ≈ (max(R,G,B) − min(R,G,B)) / max(R,G,B) and V is vibrance.
+              where s ≈ (max(R,G,B) − min(R,G,B)) / max(R,G,B) and V is vibrance (can be negative to desaturate adaptively).
             </div>
 
             <div className="text-foreground mt-4">Interpolation:</div>

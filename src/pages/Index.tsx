@@ -97,9 +97,9 @@ export default function Index() {
 
                 <div>
                   <label className="text-sm font-medium text-foreground mb-2 block">
-                    Vibrance: {vibrance.toFixed(2)}
+                    Vibrance: {vibrance >= 0 ? '+' : ''}{vibrance.toFixed(2)}
                   </label>
-                  <Slider value={[vibrance]} onValueChange={([v]) => setVibrance(v)} min={0} max={1} step={0.01} />
+                  <Slider value={[vibrance]} onValueChange={([v]) => setVibrance(v)} min={-1} max={1} step={0.01} />
                 </div>
 
 
