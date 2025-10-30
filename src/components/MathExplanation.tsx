@@ -290,7 +290,8 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-foreground">Scalar Multiplication</h3>
             <p className="text-sm text-muted-foreground">
-              Contrast is achieved by scaling each color channel around the midpoint (128).
+              Contrast scales the color along the ray from mid‑gray [128,128,128] to the pixel: multiply (x − mid‑gray)
+              by a factor and add mid‑gray back.
             </p>
           </div>
 
@@ -301,8 +302,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
             <div className="text-muted-foreground mt-2 text-xs">
-              Scaling about the midpoint (128,128,128): vectors from the midpoint are stretched or compressed. Direction
-              from the midpoint is preserved; only distance changes.
+              We scale in the direction from the midpoint of the gray vector: take the vector from mid‑gray
+              (128,128,128) to the pixel and stretch or compress it. The direction is preserved; only the distance
+              along that ray changes.
             </div>
           </div>
           

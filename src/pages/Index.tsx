@@ -54,10 +54,27 @@ export default function Index() {
           {/* Left Panel - Image & Controls */}
           <div className="space-y-6">
             <Card className="p-6 border-border bg-card">
-              <h2 className="text-xl font-semibold text-primary mb-4 flex items-center gap-2">
-                <Upload className="w-5 h-5" />
-                Image Preview
-              </h2>
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <h2 className="text-xl font-semibold text-primary flex items-center gap-2">
+                  <Upload className="w-5 h-5" />
+                  Image Preview
+                </h2>
+                {image && (
+                  <Button
+                    className="shrink-0"
+                    variant="outline"
+                    onClick={() => {
+                      setImage(null);
+                      setSelectedRGB(null);
+                      if (fileInputRef.current) {
+                        fileInputRef.current.value = "";
+                      }
+                    }}
+                  >
+                    Remove Image
+                  </Button>
+                )}
+              </div>
               
               {!image ? <div className="aspect-video border-2 border-dashed border-border rounded-lg flex items-center justify-center">
                   <div className="text-center space-y-4">

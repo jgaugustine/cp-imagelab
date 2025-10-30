@@ -160,14 +160,15 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
     if (!canvasRef.current || !image) return;
 
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true, alpha: false });
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
     if (!ctx) return;
 
     // Set intrinsic canvas size to image pixels; CSS will scale to fit container
     canvas.width = image.width;
     canvas.height = image.height;
 
-    // Draw original image
+    // Clear and draw original image
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(image, 0, 0);
 
     // Get image data
@@ -179,6 +180,11 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
 
     // Apply transformations in user-defined order
     for (let i = 0; i < data.length; i += 4) {
+      const alpha = data[i + 3];
+      // Skip transforming fully transparent pixels to preserve background
+      if (alpha === 0) {
+        continue;
+      }
       let rgb: RGB = { 
         r: data[i], 
         g: data[i + 1], 
@@ -204,11 +210,46 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
     if (!canvas || !originalImageDataRef.current) return;
 
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    
-    const x = Math.floor((e.clientX - rect.left) * scaleX);
-    const y = Math.floor((e.clientY - rect.top) * scaleY);
+
+    // Compute displayed image area within the canvas element (object-contain letterboxing)
+    const containerWidth = rect.width;
+    const containerHeight = rect.height;
+    const imgAspect = canvas.width / canvas.height;
+    const containerAspect = containerWidth / containerHeight;
+
+    let drawWidth: number;
+    let drawHeight: number;
+    let offsetX: number;
+    let offsetY: number;
+
+    if (containerAspect > imgAspect) {
+      // Limited by height, horizontal letterboxing
+      drawHeight = containerHeight;
+      drawWidth = drawHeight * imgAspect;
+      offsetX = (containerWidth - drawWidth) / 2;
+      offsetY = 0;
+    } else {
+      // Limited by width, vertical letterboxing
+      drawWidth = containerWidth;
+      drawHeight = drawWidth / imgAspect;
+      offsetX = 0;
+      offsetY = (containerHeight - drawHeight) / 2;
+    }
+
+    const relX = e.clientX - rect.left - offsetX;
+    const relY = e.clientY - rect.top - offsetY;
+
+    // If cursor is in the letterboxed area, hide inspector
+    if (relX < 0 || relY < 0 || relX >= drawWidth || relY >= drawHeight) {
+      setInspectorData(null);
+      return;
+    }
+
+    const scaleX = canvas.width / drawWidth;
+    const scaleY = canvas.height / drawHeight;
+
+    const x = Math.floor(relX * scaleX);
+    const y = Math.floor(relY * scaleY);
 
     if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) {
       setInspectorData(null);
@@ -253,11 +294,43 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
     if (!onPixelSelect || !canvasRef.current || !originalImageDataRef.current) return;
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const x = Math.floor((e.clientX - rect.left) * scaleX);
-    const y = Math.floor((e.clientY - rect.top) * scaleY);
+
+    // Mirror the same letterboxing-aware mapping used in hover
+    const containerWidth = rect.width;
+    const containerHeight = rect.height;
+    const imgAspect = canvas.width / canvas.height;
+    const containerAspect = containerWidth / containerHeight;
+
+    let drawWidth: number;
+    let drawHeight: number;
+    let offsetX: number;
+    let offsetY: number;
+
+    if (containerAspect > imgAspect) {
+      drawHeight = containerHeight;
+      drawWidth = drawHeight * imgAspect;
+      offsetX = (containerWidth - drawWidth) / 2;
+      offsetY = 0;
+    } else {
+      drawWidth = containerWidth;
+      drawHeight = drawWidth / imgAspect;
+      offsetX = 0;
+      offsetY = (containerHeight - drawHeight) / 2;
+    }
+
+    const relX = e.clientX - rect.left - offsetX;
+    const relY = e.clientY - rect.top - offsetY;
+
+    if (relX < 0 || relY < 0 || relX >= drawWidth || relY >= drawHeight) return;
+
+    const scaleX = canvas.width / drawWidth;
+    const scaleY = canvas.height / drawHeight;
+
+    const x = Math.floor(relX * scaleX);
+    const y = Math.floor(relY * scaleY);
+
     if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) return;
+
     const index = (y * canvas.width + x) * 4;
     const originalData = originalImageDataRef.current.data;
     const rgb: RGB = {
