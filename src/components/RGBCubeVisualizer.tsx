@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { TransformationType } from "@/types/transformations";
-import { srgbToLinear, linearToSrgb } from "@/lib/utils";
 
 type Mode = 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | 'all';
 
@@ -119,65 +118,68 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
   const height = 220;
   const prevParamsRef = useRef<{ brightness?: number; contrast?: number; saturation?: number; vibrance?: number; hue?: number; linearSaturation?: boolean }>({ ...params });
 
-  const finite01 = (v: number) => Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
-  const sanitizeLin = (c: { r: number; g: number; b: number }) => ({ r: finite01(c.r), g: finite01(c.g), b: finite01(c.b) });
-
-  function computeTransformedForLinear(originalLin: { r: number; g: number; b: number }, forMode: Mode, customParams?: typeof params) {
+  function computeTransformedFor(original: { r: number; g: number; b: number }, forMode: Mode, customParams?: typeof params) {
     const p = customParams ?? params;
-    const ref = 0.5;
     if (forMode === 'brightness') {
-      const stops = (p.brightness ?? 0) / 50;
-      const f = Math.pow(2, stops);
-      return { r: Math.max(0, Math.min(1, originalLin.r * f)), g: Math.max(0, Math.min(1, originalLin.g * f)), b: Math.max(0, Math.min(1, originalLin.b * f)) };
+      const b = p.brightness ?? 0;
+      return { r: clamp(original.r + b), g: clamp(original.g + b), b: clamp(original.b + b) };
     }
     if (forMode === 'contrast') {
       const c = p.contrast ?? 1;
-      return { r: Math.max(0, Math.min(1, (originalLin.r - ref) * c + ref)), g: Math.max(0, Math.min(1, (originalLin.g - ref) * c + ref)), b: Math.max(0, Math.min(1, (originalLin.b - ref) * c + ref)) };
+      return { r: clamp((original.r - 128) * c + 128), g: clamp((original.g - 128) * c + 128), b: clamp((original.b - 128) * c + 128) };
     }
     if (forMode === 'saturation') {
       const s = p.saturation ?? 1;
-      const Y = 0.2126 * originalLin.r + 0.7152 * originalLin.g + 0.0722 * originalLin.b;
-      return { r: Math.max(0, Math.min(1, Y + (originalLin.r - Y) * s)), g: Math.max(0, Math.min(1, Y + (originalLin.g - Y) * s)), b: Math.max(0, Math.min(1, Y + (originalLin.b - Y) * s)) };
+      const linear = p.linearSaturation ?? false;
+      if (!linear) {
+        const wR = 0.299, wG = 0.587, wB = 0.114;
+        const gray = wR * original.r + wG * original.g + wB * original.b;
+        return { r: clamp(gray + (original.r - gray) * s), g: clamp(gray + (original.g - gray) * s), b: clamp(gray + (original.b - gray) * s) };
+      } else {
+        const rl = toLinear(original.r), gl = toLinear(original.g), bl = toLinear(original.b);
+        const wR = 0.2126, wG = 0.7152, wB = 0.0722;
+        const Y = wR * rl + wG * gl + wB * bl;
+        const rlinP = Y + (rl - Y) * s;
+        const glinP = Y + (gl - Y) * s;
+        const blinP = Y + (bl - Y) * s;
+        return { r: clamp(toSRGB(rlinP) * 255), g: clamp(toSRGB(glinP) * 255), b: clamp(toSRGB(blinP) * 255) };
+      }
     }
     if (forMode === 'vibrance') {
       const V = p.vibrance ?? 0;
-      const maxC = Math.max(originalLin.r, originalLin.g, originalLin.b);
-      const minC = Math.min(originalLin.r, originalLin.g, originalLin.b);
+      const linear = p.linearSaturation ?? false;
+      const R = original.r, G = original.g, B = original.b;
+      const toLinLocal = (c: number) => {
+        const x = c / 255;
+        return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+      };
+      const Rm = linear ? toLinLocal(R) : R;
+      const Gm = linear ? toLinLocal(G) : G;
+      const Bm = linear ? toLinLocal(B) : B;
+      const maxC = Math.max(Rm, Gm, Bm);
+      const minC = Math.min(Rm, Gm, Bm);
       const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
       const f = 1 + V * (1 - sEst);
-      const Y = 0.2126 * originalLin.r + 0.7152 * originalLin.g + 0.0722 * originalLin.b;
-      return { r: Math.max(0, Math.min(1, Y + (originalLin.r - Y) * f)), g: Math.max(0, Math.min(1, Y + (originalLin.g - Y) * f)), b: Math.max(0, Math.min(1, Y + (originalLin.b - Y) * f)) };
+      const wR = linear ? 0.2126 : 0.299;
+      const wG = linear ? 0.7152 : 0.587;
+      const wB = linear ? 0.0722 : 0.114;
+      const gray = wR * R + wG * G + wB * B;
+      return { r: clamp(gray + (R - gray) * f), g: clamp(gray + (G - gray) * f), b: clamp(gray + (B - gray) * f) };
     }
     // hue
     const hue = p.hue ?? 0;
     const M = buildHueRotationMatrix(hue);
-    return {
-      r: Math.max(0, Math.min(1, originalLin.r * M[0] + originalLin.g * M[1] + originalLin.b * M[2])),
-      g: Math.max(0, Math.min(1, originalLin.r * M[3] + originalLin.g * M[4] + originalLin.b * M[5])),
-      b: Math.max(0, Math.min(1, originalLin.r * M[6] + originalLin.g * M[7] + originalLin.b * M[8])),
-    };
-  }
-
-  function computeTransformedFor(original: { r: number; g: number; b: number }, forMode: Mode, customParams?: typeof params) {
-    // Keep for any consumers that expect sRGB; not used for plotting anymore
-    const lin0 = { r: srgbToLinear(original.r), g: srgbToLinear(original.g), b: srgbToLinear(original.b) };
-    const lin = computeTransformedForLinear(lin0, forMode, customParams);
-    return { r: clamp(linearToSrgb(lin.r)), g: clamp(linearToSrgb(lin.g)), b: clamp(linearToSrgb(lin.b)) };
-  }
-
-  function computePipelineTransformedLinear(originalLin: { r: number; g: number; b: number }, customParams?: typeof params) {
-    const order: Exclude<Mode, 'all'>[] = (transformOrder ?? ['brightness','contrast','saturation','vibrance','hue']) as Exclude<Mode,'all'>[];
-    let lin = { ...originalLin };
-    for (const step of order) {
-      lin = computeTransformedForLinear(lin, step, customParams);
-    }
-    return lin;
+    return multiplyRGB(M, original.r, original.g, original.b);
   }
 
   function computePipelineTransformed(original: { r: number; g: number; b: number }) {
-    const lin0 = { r: srgbToLinear(original.r), g: srgbToLinear(original.g), b: srgbToLinear(original.b) };
-    const lin = computePipelineTransformedLinear(lin0);
-    return { r: clamp(linearToSrgb(lin.r)), g: clamp(linearToSrgb(lin.g)), b: clamp(linearToSrgb(lin.b)) };
+    // Use provided order if available; otherwise default
+    const order: Exclude<Mode, 'all'>[] = (transformOrder ?? ['brightness','contrast','saturation','vibrance','hue']) as Exclude<Mode,'all'>[];
+    let rgb = { ...original };
+    for (const step of order) {
+      rgb = computeTransformedFor(rgb, step);
+    }
+    return rgb;
   }
 
   function computePipelineWithParams(customParams: typeof params, start: { r: number; g: number; b: number }) {
@@ -190,16 +192,15 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
   }
 
   useEffect(() => {
-    try {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
-      canvas.width = Math.floor(width * dpr);
-      canvas.height = Math.floor(height * dpr);
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      ctx.clearRect(0, 0, width, height);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
 
     const axisColor = "#94a3b8";
     const cubeColor = "#475569";
@@ -209,15 +210,9 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
 
     const original = selectedRGB ?? { r: 200, g: 150, b: 100 };
 
-    // Compute in linear space for visualization
-    let originalLin = { r: srgbToLinear(original.r), g: srgbToLinear(original.g), b: srgbToLinear(original.b) };
-    originalLin = sanitizeLin(originalLin);
-    let transformedLin = mode === 'all' ? computePipelineTransformedLinear(originalLin) : computeTransformedForLinear(originalLin, mode);
-    transformedLin = sanitizeLin(transformedLin);
+    const transformed = mode === 'all' ? computePipelineTransformed(original) : computeTransformedFor(original, mode);
 
-    // Projector that accepts linear [0,1] and internally scales to 0..255 for stable sizing
-    const rpL = (lx: number, ly: number, lz: number) => {
-      const x = finite01(lx) * 255, y = finite01(ly) * 255, z = finite01(lz) * 255;
+    const rp = (x: number, y: number, z: number) => {
       const cx = 127.5, cy = 127.5, cz = 127.5;
       const r = rotatePoint(x - cx, y - cy, z - cz, yaw, pitch);
       return project(r.x + cx, r.y + cy, r.z + cz, width, height, zoom);
@@ -225,13 +220,13 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
 
     const VERTS = [
       [0, 0, 0],
-      [1, 0, 0],
-      [1, 1, 0],
-      [0, 1, 0],
-      [0, 0, 1],
-      [1, 0, 1],
-      [1, 1, 1],
-      [0, 1, 1],
+      [255, 0, 0],
+      [255, 255, 0],
+      [0, 255, 0],
+      [0, 0, 255],
+      [255, 0, 255],
+      [255, 255, 255],
+      [0, 255, 255],
     ];
     const EDGES = [
       [0, 1], [1, 2], [2, 3], [3, 0],
@@ -241,23 +236,23 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
 
     ctx.lineWidth = 1;
     ctx.strokeStyle = cubeColor;
-    const PV = VERTS.map(([x, y, z]) => rpL(x, y, z));
+    const PV = VERTS.map(([x, y, z]) => rp(x, y, z));
     for (const [a, b] of EDGES) line(ctx, PV[a], PV[b]);
 
     ctx.strokeStyle = axisColor;
-    line(ctx, rpL(0, 0, 0), rpL(1, 1, 1));
+    line(ctx, rp(0, 0, 0), rp(255, 255, 255));
 
-    const origin2d = rpL(0, 0, 0);
-    const pRaxis = rpL(1, 0, 0);
-    const pGaxis = rpL(0, 1, 0);
-    const pBaxis = rpL(0, 0, 1);
+    const origin2d = rp(0, 0, 0);
+    const pRaxis = rp(255, 0, 0);
+    const pGaxis = rp(0, 255, 0);
+    const pBaxis = rp(0, 0, 255);
     ctx.lineWidth = 3;
     ctx.strokeStyle = "#ef4444"; line(ctx, origin2d, pRaxis);
     ctx.strokeStyle = "#22c55e"; line(ctx, origin2d, pGaxis);
     ctx.strokeStyle = "#3b82f6"; line(ctx, origin2d, pBaxis);
 
-    const p0 = rpL(originalLin.r, originalLin.g, originalLin.b);
-    const p1 = rpL(transformedLin.r, transformedLin.g, transformedLin.b);
+    const p0 = rp(original.r, original.g, original.b);
+    const p1 = rp(transformed.r, transformed.g, transformed.b);
 
     // Original vector (dashed)
     ctx.setLineDash([6, 4]);
@@ -267,19 +262,23 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
     drawArrow(ctx, origin2d, p1, arrowB, 2, 8);
 
     function drawAuxForMode(activeMode: Mode) {
-      const activeTransformedLin = computeTransformedForLinear(originalLin, activeMode);
-      const activeP1 = rpL(activeTransformedLin.r, activeTransformedLin.g, activeTransformedLin.b);
+      const activeTransformed = computeTransformedFor(original, activeMode);
+      const activeP1 = rp(activeTransformed.r, activeTransformed.g, activeTransformed.b);
       ctx.strokeStyle = auxColor;
       if (activeMode === 'brightness') {
         drawArrow(ctx, p0, activeP1, auxColor, 2, 8);
       } else if (activeMode === 'contrast') {
-        const mid = rpL(0.5, 0.5, 0.5);
+        const mid = rp(128, 128, 128);
         ctx.lineWidth = 1.5;
         line(ctx, mid, p0);
         drawArrow(ctx, mid, activeP1, auxColor, 2, 8);
       } else if (activeMode === 'saturation' || activeMode === 'vibrance') {
-        const Y = 0.2126 * originalLin.r + 0.7152 * originalLin.g + 0.0722 * originalLin.b;
-        const grayPt = rpL(Y, Y, Y);
+        const linear = params.linearSaturation ?? false;
+        const wR = linear ? 0.2126 : 0.299;
+        const wG = linear ? 0.7152 : 0.587;
+        const wB = linear ? 0.0722 : 0.114;
+        const gray = wR * original.r + wG * original.g + wB * original.b;
+        const grayPt = rp(gray, gray, gray);
         ctx.lineWidth = 1.5;
         line(ctx, grayPt, p0);
         drawArrow(ctx, grayPt, activeP1, auxColor, 2, 8);
@@ -314,24 +313,28 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
     ctx.strokeStyle = auxColor;
     if (lastChange) {
       const step = lastChange as Exclude<Mode,'all'>;
-      // Compute the state before the last change using linear pipeline
+      // Compute the state before the last change: full pipeline with previous value for lastChange, current for all others
       const prevParams = prevParamsRef.current;
-      const beforeParams = { ...params } as typeof params;
+      const beforeParams = { ...params };
       if (step === 'brightness') (beforeParams as any).brightness = prevParams.brightness ?? 0;
       else if (step === 'contrast') (beforeParams as any).contrast = prevParams.contrast ?? 1;
       else if (step === 'saturation') (beforeParams as any).saturation = prevParams.saturation ?? 1;
       else if (step === 'vibrance') (beforeParams as any).vibrance = prevParams.vibrance ?? 0;
       else if (step === 'hue') (beforeParams as any).hue = prevParams.hue ?? 0;
 
+      // Compute the input to the last-changed step by applying all transforms that come before it in the pipeline
       const order: Exclude<Mode, 'all'>[] = (transformOrder ?? ['brightness','contrast','saturation','vibrance','hue']) as Exclude<Mode,'all'>[];
-      let beforeLin = { ...originalLin };
+      let before = original;
+      // Apply all transforms up to (but not including) the last-changed step, using current params (since those haven't changed)
       for (const s of order) {
         if (s === step) break;
-        beforeLin = computeTransformedForLinear(beforeLin, s, params);
+        before = computeTransformedFor(before, s, params);
       }
-
-      const fullBeforeLin = computePipelineTransformedLinear(originalLin, beforeParams);
-      const fullAfterLin = mode === 'all' ? transformedLin : computePipelineTransformedLinear(originalLin);
+      
+      // Compute the full pipeline result with beforeParams (old value for step) - this is where we were before the change
+      const fullBefore = computePipelineWithParams(beforeParams, original);
+      // Compute the full pipeline result with current params - this is where we are now (the edited pixel value)
+      const fullAfter = mode === 'all' ? transformed : computePipelineTransformed(original);
       
       // The update vector should show the transform effect, but we want it to terminate at the edited pixel value
       // So compute what the step does from the "before" input point
@@ -344,8 +347,8 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
       // For most transforms, show from before->fullAfter, but positioned correctly
       // For transforms that have specific guides (contrast mid-point, saturation gray), use those guides but ensure termination
       
-      const pBefore = rpL(beforeLin.r, beforeLin.g, beforeLin.b);
-      const pFullAfter = rpL(fullAfterLin.r, fullAfterLin.g, fullAfterLin.b);
+      const pBefore = rp(before.r, before.g, before.b);
+      const pFullAfter = rp(fullAfter.r, fullAfter.g, fullAfter.b);
       if (step === 'hue') {
         const v0x = pBefore.x - origin2d.x, v0y = pBefore.y - origin2d.y;
         const v1x = pFullAfter.x - origin2d.x, v1y = pFullAfter.y - origin2d.y;
@@ -370,43 +373,28 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
         ctx.fillStyle = auxColor;
         ctx.fill();
       } else if (step === 'contrast') {
-        const mid = rpL(0.5, 0.5, 0.5);
+        const mid = rp(128, 128, 128);
         ctx.lineWidth = 1.5;
         drawArrow(ctx, mid, pFullAfter, auxColor, 2, 8);
       } else if (step === 'saturation' || step === 'vibrance') {
-        const Yb = 0.2126 * beforeLin.r + 0.7152 * beforeLin.g + 0.0722 * beforeLin.b;
-        const grayPt = rpL(Yb, Yb, Yb);
+        const linear = params.linearSaturation ?? false;
+        const wR = linear ? 0.2126 : 0.299;
+        const wG = linear ? 0.7152 : 0.587;
+        const wB = linear ? 0.0722 : 0.114;
+        const grayBefore = wR * before.r + wG * before.g + wB * before.b;
+        const grayPt = rp(grayBefore, grayBefore, grayBefore);
         ctx.lineWidth = 1.5;
         drawArrow(ctx, grayPt, pFullAfter, auxColor, 2, 8);
       } else {
         // brightness: simple arrow from before to the edited pixel value
         drawArrow(ctx, pBefore, pFullAfter, auxColor, 2, 8);
       }
-    }
-
-    // Always draw the base cyan guide for the current tab (except 'all')
-    if (mode !== 'all') {
-      ctx.setLineDash([]);
+    } else if (mode !== 'all') {
       drawAuxForMode(mode as Exclude<Mode, 'all'>);
-      // Fallback markers: draw small cyan dots at original and mode-result to guarantee visibility
-      const activeLin = computeTransformedForLinear(originalLin, mode as Exclude<Mode, 'all'>);
-      const endP = rpL(activeLin.r, activeLin.g, activeLin.b);
-      ctx.fillStyle = auxColor;
-      ctx.beginPath();
-      ctx.arc(p0.x, p0.y, 3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(endP.x, endP.y, 3, 0, Math.PI * 2);
-      ctx.fill();
     }
 
-      // Update previous params snapshot after rendering
-      prevParamsRef.current = { ...params };
-    } catch (err) {
-      // Fail-safe: do not crash the app if the visualizer errors
-      // eslint-disable-next-line no-console
-      console.error('RGBCubeVisualizer render error', err);
-    }
+    // Update previous params snapshot after rendering
+    prevParamsRef.current = { ...params };
   }, [mode, params, selectedRGB, yaw, pitch, zoom, showAllChanges, lastChange, transformOrder]);
 
   useEffect(() => {
