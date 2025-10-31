@@ -41,7 +41,12 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-primary">Mathematical Transformations</h2>
           <TabsList className="bg-transparent p-0">
-            <TabsTrigger value="all">All Changes</TabsTrigger>
+            <TabsTrigger
+              value="all"
+              className="rounded-md px-3 py-1 border border-sky-600 text-sky-600 hover:bg-sky-50/60 data-[state=active]:bg-sky-600 data-[state=active]:text-sky-50"
+            >
+              Visualize Composite Changes
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -131,7 +136,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
         <TabsContent value="vibrance" className="space-y-4 mt-4">
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-foreground">Adaptive Chroma Adjustment</h3>
+            <h3 className="text-lg font-semibold text-foreground">Adaptive Color Adjustment</h3>
             <p className="text-sm text-muted-foreground">
               Vibrance adjusts saturation adaptively: positive values boost low‑chroma pixels more than high‑chroma ones; negative values reduce low‑chroma pixels more gently, preserving skin tones and avoiding clipping.
             </p>
@@ -481,26 +486,6 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               angle changes. Brightness stays fairly constant; only hue shifts.
             </div>
           </div>
-          <Card className="p-4 border-border bg-card">
-            <h4 className="text-sm font-semibold text-foreground mb-3">What this means</h4>
-            <div className="text-xs space-y-2 text-muted-foreground">
-              <div>
-                Hue rotation spins colors around the gray axis (where R=G=B). Brightness stays about the same; only the
-                hue changes. Imagine rotating a point around the center line of the RGB cube.
-              </div>
-              <div>
-                Small angles make subtle shifts; larger angles can cycle colors (reds→greens→blues). Near gamut edges,
-                extreme rotations may clip, which can slightly change saturation.
-              </div>
-            </div>
-          </Card>
-          <div className="bg-muted p-4 rounded-lg text-sm">
-            <div className="text-foreground font-semibold">Intuition</div>
-            <div className="text-muted-foreground mt-2 text-xs">
-              Like turning a color wheel while keeping brightness steady. Reds can become oranges/yellows/greens as you
-              rotate, but neutrals (grays) stay unchanged because they lie on the rotation axis.
-            </div>
-          </div>
           
           <div className="bg-muted p-4 rounded-lg font-mono text-sm overflow-x-auto">
             <div className="text-foreground">Rotation angle: {hue}° = {(hue * Math.PI / 180).toFixed(3)} radians</div>
@@ -550,20 +535,23 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               This preserves luminance while rotating colors around the color wheel.
             </div>
           </div>
-          <div className="bg-muted p-4 rounded-lg text-sm">
-            <div className="text-foreground font-semibold">Why brightness stays stable</div>
-            <div className="text-muted-foreground mt-2 text-xs">
-              We rotate around the gray axis, so the gray component of each pixel stays about the same while colors
-              circle around it. Perceived brightness stays roughly the same; minor changes can occur near gamut limits
-              and due to display gamma.
+          <Card className="p-4 border-border bg-card">
+            <h4 className="text-sm font-semibold text-foreground mb-3">What this means</h4>
+            <div className="text-xs space-y-2 text-muted-foreground">
+              <div>
+                Hue rotation spins colors around the gray axis (where R=G=B). Brightness stays about the same; only the
+                hue changes. Imagine rotating a point around the center line of the RGB cube.
+                Small angles make subtle shifts; larger angles can cycle colors (reds→greens→blues). Near gamut edges,
+                extreme rotations may clip, which can slightly change saturation.
+              </div>
             </div>
-          </div>
+          </Card>
         </TabsContent>
 
         <TabsContent value="all" className="space-y-4 mt-4">
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-foreground">All Changes (vector overlays)</h3>
-            <p className="text-sm text-muted-foreground">Shows auxiliary vectors for brightness, contrast, saturation, vibrance, and hue simultaneously.</p>
+            <h3 className="text-lg font-semibold text-foreground">Visualize Composite Changes</h3>
+            <p className="text-sm text-muted-foreground">Shows the original and full-pipeline transformed vectors, plus a guide for the most recently edited transform.</p>
           </div>
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: All vector-based transforms</h4>

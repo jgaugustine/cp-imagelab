@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { PixelInspector } from "./PixelInspector";
 import { TransformationType, RGB } from "@/types/transformations";
+import { srgbToLinear, linearToSrgb } from "@/lib/utils";
 
 interface ImageCanvasProps {
   image: HTMLImageElement;
@@ -31,73 +32,42 @@ interface InspectorData {
 }
 
 const clamp = (val: number): number => Math.max(0, Math.min(255, val));
+const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
 
-// sRGB <-> linear-light helpers
-const srgbToLinear = (channel0to255: number): number => {
-  const x = channel0to255 / 255;
-  return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
-};
+// sRGB <-> linear-light helpers moved to @/lib/utils
 
-const linearToSrgb = (linear0to1: number): number => {
-  const y = linear0to1 <= 0.0031308 ? 12.92 * linear0to1 : 1.055 * Math.pow(linear0to1, 1 / 2.4) - 0.055;
-  return y * 255;
-};
-
-const applyBrightness = (rgb: RGB, value: number): RGB => {
+// Linear-light transforms on [0,1]
+const applyExposureLinear = (lin: { r: number; g: number; b: number }, stops: number) => {
+  const f = Math.pow(2, stops);
   return {
-    r: clamp(rgb.r + value),
-    g: clamp(rgb.g + value),
-    b: clamp(rgb.b + value)
+    r: clamp01(lin.r * f),
+    g: clamp01(lin.g * f),
+    b: clamp01(lin.b * f)
   };
 };
 
-const applyContrast = (rgb: RGB, value: number): RGB => {
+const applyContrastLinear = (lin: { r: number; g: number; b: number }, contrast: number) => {
+  const ref = 0.5;
   return {
-    r: clamp((rgb.r - 128) * value + 128),
-    g: clamp((rgb.g - 128) * value + 128),
-    b: clamp((rgb.b - 128) * value + 128)
+    r: clamp01((lin.r - ref) * contrast + ref),
+    g: clamp01((lin.g - ref) * contrast + ref),
+    b: clamp01((lin.b - ref) * contrast + ref)
   };
 };
 
-const applySaturationGamma = (rgb: RGB, saturation: number, vibrance: number): RGB => {
-  if (saturation === 1 && vibrance === 0) return rgb;
-  // Rec.601 luma weights in gamma space (approximate)
-  const gray = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
-  // Estimate per-pixel saturation using max/min
-  const maxC = Math.max(rgb.r, rgb.g, rgb.b);
-  const minC = Math.min(rgb.r, rgb.g, rgb.b);
-  const s = maxC === 0 ? 0 : (maxC - minC) / maxC; // 0..1
-  const vibBoost = vibrance * (1 - s); // more boost for low-sat colors
-  const factor = saturation + vibBoost;
-  return {
-    r: clamp(gray + (rgb.r - gray) * factor),
-    g: clamp(gray + (rgb.g - gray) * factor),
-    b: clamp(gray + (rgb.b - gray) * factor)
-  };
-};
+// gamma-space saturation removed; all saturation done in linear-light
 
-const applySaturationLinear = (rgb: RGB, saturation: number, vibrance: number): RGB => {
-  if (saturation === 1 && vibrance === 0) return rgb;
-  // Convert to linear-light
-  const rl = srgbToLinear(rgb.r);
-  const gl = srgbToLinear(rgb.g);
-  const bl = srgbToLinear(rgb.b);
-  // Rec.709 luma weights in linear-light
-  const Y = 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
-  // Estimate saturation in linear space
-  const maxL = Math.max(rl, gl, bl);
-  const minL = Math.min(rl, gl, bl);
-  const s = maxL === 0 ? 0 : (maxL - minL) / maxL;
-  const vibBoost = vibrance * (1 - s);
-  const factor = saturation + vibBoost;
-  const rlin = Y + (rl - Y) * factor;
-  const glin = Y + (gl - Y) * factor;
-  const blin = Y + (bl - Y) * factor;
-  // Back to sRGB
+const applySaturationLinear = (lin: { r: number; g: number; b: number }, saturation: number, vibrance: number) => {
+  if (saturation === 1 && vibrance === 0) return lin;
+  const Y = 0.2126 * lin.r + 0.7152 * lin.g + 0.0722 * lin.b;
+  const maxL = Math.max(lin.r, lin.g, lin.b);
+  const minL = Math.min(lin.r, lin.g, lin.b);
+  const sEst = maxL === 0 ? 0 : (maxL - minL) / maxL;
+  const factor = saturation + vibrance * (1 - sEst);
   return {
-    r: clamp(linearToSrgb(rlin)),
-    g: clamp(linearToSrgb(glin)),
-    b: clamp(linearToSrgb(blin))
+    r: clamp01(Y + (lin.r - Y) * factor),
+    g: clamp01(Y + (lin.g - Y) * factor),
+    b: clamp01(Y + (lin.b - Y) * factor)
   };
 };
 
@@ -127,6 +97,29 @@ const applyHue = (rgb: RGB, value: number): RGB => {
   };
 };
 
+const applyHueLinear = (lin: { r: number; g: number; b: number }, value: number) => {
+  if (value === 0) return lin;
+  const angle = (value * Math.PI) / 180;
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+  const m = [
+    cosA + (1 - cosA) / 3,
+    (1 / 3) * (1 - cosA) - Math.sqrt(1 / 3) * sinA,
+    (1 / 3) * (1 - cosA) + Math.sqrt(1 / 3) * sinA,
+    (1 / 3) * (1 - cosA) + Math.sqrt(1 / 3) * sinA,
+    cosA + (1 / 3) * (1 - cosA),
+    (1 / 3) * (1 - cosA) - Math.sqrt(1 / 3) * sinA,
+    (1 / 3) * (1 - cosA) - Math.sqrt(1 / 3) * sinA,
+    (1 / 3) * (1 - cosA) + Math.sqrt(1 / 3) * sinA,
+    cosA + (1 / 3) * (1 - cosA),
+  ];
+  return {
+    r: clamp01(lin.r * m[0] + lin.g * m[1] + lin.b * m[2]),
+    g: clamp01(lin.r * m[3] + lin.g * m[4] + lin.b * m[5]),
+    b: clamp01(lin.r * m[6] + lin.g * m[7] + lin.b * m[8]),
+  };
+};
+
 export function ImageCanvas({ image, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true, onPixelSelect }: ImageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [inspectorData, setInspectorData] = useState<InspectorData | null>(null);
@@ -141,18 +134,18 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
     }
   };
 
-  const applyTransformation = (rgb: RGB, type: TransformationType): RGB => {
-    const value = getTransformValue(type);
+  const applyTransformationLinear = (lin: { r: number; g: number; b: number }, type: TransformationType): { r: number; g: number; b: number } => {
     switch (type) {
-      case 'brightness': return applyBrightness(rgb, value);
-      case 'contrast': return applyContrast(rgb, value);
-      case 'saturation': return linearSaturation
-        ? applySaturationLinear(rgb, value, vibrance)
-        : applySaturationGamma(rgb, value, vibrance);
-      case 'vibrance': return linearSaturation
-        ? applySaturationLinear(rgb, 1, vibrance)
-        : applySaturationGamma(rgb, 1, vibrance);
-      case 'hue': return applyHue(rgb, value);
+      case 'brightness':
+        return applyExposureLinear(lin, (brightness ?? 0) / 50);
+      case 'contrast':
+        return applyContrastLinear(lin, contrast);
+      case 'saturation':
+        return applySaturationLinear(lin, saturation, vibrance ?? 0);
+      case 'vibrance':
+        return applySaturationLinear(lin, 1, vibrance ?? 0);
+      case 'hue':
+        return applyHueLinear(lin, hue);
     }
   };
 
@@ -178,27 +171,26 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
     // Store original image data for inspection (refresh per image/params)
     originalImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    // Apply transformations in user-defined order
+    // Apply transformations in user-defined order (linearize once per pixel)
     for (let i = 0; i < data.length; i += 4) {
       const alpha = data[i + 3];
       // Skip transforming fully transparent pixels to preserve background
       if (alpha === 0) {
         continue;
       }
-      let rgb: RGB = { 
-        r: data[i], 
-        g: data[i + 1], 
-        b: data[i + 2] 
+      let lin = {
+        r: srgbToLinear(data[i]),
+        g: srgbToLinear(data[i + 1]),
+        b: srgbToLinear(data[i + 2])
       };
-      
-      // Apply each transformation in order with clamping
+
       for (const transformType of transformOrder) {
-        rgb = applyTransformation(rgb, transformType);
+        lin = applyTransformationLinear(lin, transformType);
       }
-      
-      data[i] = rgb.r;
-      data[i + 1] = rgb.g;
-      data[i + 2] = rgb.b;
+
+      data[i] = clamp(linearToSrgb(lin.r));
+      data[i + 1] = clamp(linearToSrgb(lin.g));
+      data[i + 2] = clamp(linearToSrgb(lin.b));
     }
 
     ctx.putImageData(imageData, 0, 0);
@@ -265,20 +257,28 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
       b: originalData[index + 2],
     };
 
-    // Calculate step-by-step transformations in current order
+    // Calculate step-by-step transformations in current order (linear pipeline)
     const stepByStep: Record<TransformationType, RGB> = {} as Record<TransformationType, RGB>;
-    let rgb = originalRGB;
-
+    let linStep = {
+      r: srgbToLinear(originalRGB.r),
+      g: srgbToLinear(originalRGB.g),
+      b: srgbToLinear(originalRGB.b),
+    };
     for (const transformType of transformOrder) {
-      rgb = applyTransformation(rgb, transformType);
-      stepByStep[transformType] = { ...rgb };  // Store clamped result
+      linStep = applyTransformationLinear(linStep, transformType);
+      // Store sRGB-encoded snapshot for inspector
+      stepByStep[transformType] = {
+        r: clamp(linearToSrgb(linStep.r)),
+        g: clamp(linearToSrgb(linStep.g)),
+        b: clamp(linearToSrgb(linStep.b)),
+      };
     }
 
     setInspectorData({
       x,
       y,
       originalRGB,
-      transformedRGB: rgb,  // Final is already clamped
+      transformedRGB: stepByStep[transformOrder[transformOrder.length - 1]] ?? originalRGB,
       stepByStep,
       transformOrder,
       cursorX: e.clientX,
