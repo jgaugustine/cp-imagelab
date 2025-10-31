@@ -1,6 +1,8 @@
 import { Card } from "@/components/ui/card";
 import RGBCubeVisualizer from "@/components/RGBCubeVisualizer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TransformationOrderControls } from "@/components/TransformationOrderControls";
+import { useEffect, useRef, useState } from "react";
 
 interface MathExplanationProps {
   brightness: number;
@@ -11,14 +13,43 @@ interface MathExplanationProps {
   linearSaturation?: boolean;
   onToggleLinearSaturation?: (checked: boolean) => void;
   selectedRGB?: { r: number; g: number; b: number };
+  // Provided by parent: which control was last changed
+  lastChange?: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue';
+  // Optional pipeline order for All Changes
+  transformOrder?: ('brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue')[];
+  onTransformOrderChange?: (order: ('brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue')[]) => void;
 }
 
-export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB }: MathExplanationProps) {
+export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, onTransformOrderChange }: MathExplanationProps) {
+  const [localLastChange, setLocalLastChange] = useState<'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | undefined>(undefined);
+  const prevRef = useRef({ brightness, contrast, saturation, vibrance, hue });
+
+  useEffect(() => {
+    const prev = prevRef.current;
+    if (brightness !== prev.brightness) setLocalLastChange('brightness');
+    else if (contrast !== prev.contrast) setLocalLastChange('contrast');
+    else if (saturation !== prev.saturation) setLocalLastChange('saturation');
+    else if (vibrance !== prev.vibrance) setLocalLastChange('vibrance');
+    else if (hue !== prev.hue) setLocalLastChange('hue');
+    prevRef.current = { brightness, contrast, saturation, vibrance, hue };
+  }, [brightness, contrast, saturation, vibrance, hue]);
+
+  const effectiveLastChange = lastChange ?? localLastChange;
   return (
     <Card className="p-6 border-border bg-card h-fit">
-      <h2 className="text-xl font-semibold text-primary mb-4">Mathematical Transformations</h2>
-      
       <Tabs defaultValue="brightness" className="w-full">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-semibold text-primary">Mathematical Transformations</h2>
+          <TabsList className="bg-transparent p-0">
+            <TabsTrigger value="all">All Changes</TabsTrigger>
+          </TabsList>
+        </div>
+
+        {transformOrder && onTransformOrderChange && (
+          <div className="mb-4">
+            <TransformationOrderControls order={transformOrder} onOrderChange={onTransformOrderChange} />
+          </div>
+        )}
         <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
           <TabsTrigger value="brightness">Brightness</TabsTrigger>
           <TabsTrigger value="contrast">Contrast</TabsTrigger>
@@ -37,7 +68,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Brightness (addition)</h4>
-            <RGBCubeVisualizer mode="brightness" params={{ brightness }} selectedRGB={selectedRGB} />
+            <RGBCubeVisualizer mode="brightness" params={{ brightness }} selectedRGB={selectedRGB} lastChange={effectiveLastChange} />
           </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
@@ -77,51 +108,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             </div>
           </div>
 
-          <div className="bg-muted p-4 rounded-lg font-mono text-sm">
-            <div className="text-foreground">Distance from midpoint</div>
-            <div className="text-primary mt-2 text-xs">
-              {(() => {
-                const R = selectedRGB?.r ?? 200;
-                const G = selectedRGB?.g ?? 150;
-                const B = selectedRGB?.b ?? 100;
-                const k = contrast;
-                const dx = R - 128, dy = G - 128, dz = B - 128;
-                const before = Math.sqrt(dx*dx + dy*dy + dz*dz);
-                const after = Math.abs(k) * before;
-                return (
-                  <>
-                    <div>‖[R,G,B] − [128,128,128]‖₂ = {before.toFixed(2)}</div>
-                    <div>After scaling: × {k.toFixed(2)} ⇒ {after.toFixed(2)}</div>
-                  </>
-                );
-              })()}
-            </div>
-          </div>
-
-          <div className="bg-muted p-4 rounded-lg font-mono text-sm">
-            <div className="text-foreground">Projection onto gray axis</div>
-            <div className="text-primary mt-2 text-xs">
-              {(() => {
-                const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
-                const linear = !!linearSaturation;
-                const toLin = (c: number) => { const x = c / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
-                const Rm = linear ? toLin(R) : R;
-                const Gm = linear ? toLin(G) : G;
-                const Bm = linear ? toLin(B) : B;
-                const wR = linear ? 0.2126 : 0.299; const wG = linear ? 0.7152 : 0.587; const wB = linear ? 0.0722 : 0.114;
-                const Gray = wR * R + wG * G + wB * B;
-                const dR = R - Gray, dG = G - Gray, dB = B - Gray;
-                const dist = Math.sqrt(dR*dR + dG*dG + dB*dB);
-                return (
-                  <>
-                    <div>Gray point: [{Gray.toFixed(2)}, {Gray.toFixed(2)}, {Gray.toFixed(2)}]</div>
-                    <div>Chroma vector: [R−Gray, G−Gray, B−Gray] = [{dR.toFixed(2)}, {dG.toFixed(2)}, {dB.toFixed(2)}]</div>
-                    <div>Distance to gray axis: ||x − Gray·1||₂ ≈ {dist.toFixed(2)}</div>
-                  </>
-                );
-              })()}
-            </div>
-          </div>
+          
 
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-muted-foreground">
@@ -152,7 +139,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Vibrance (adaptive stretch from gray)</h4>
-            <RGBCubeVisualizer mode="vibrance" params={{ vibrance, linearSaturation }} selectedRGB={selectedRGB} />
+            <RGBCubeVisualizer mode="vibrance" params={{ vibrance, linearSaturation }} selectedRGB={selectedRGB} lastChange={effectiveLastChange} />
           </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
@@ -252,30 +239,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             </div>
           </div>
 
-          <div className="bg-muted p-4 rounded-lg font-mono text-sm">
-            <div className="text-foreground">Projection onto gray axis</div>
-            <div className="text-primary mt-2 text-xs">
-              {(() => {
-                const R = selectedRGB?.r ?? 200, G = selectedRGB?.g ?? 150, B = selectedRGB?.b ?? 100;
-                const linear = !!linearSaturation;
-                const toLin = (c: number) => { const x = c / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
-                const Rm = linear ? toLin(R) : R;
-                const Gm = linear ? toLin(G) : G;
-                const Bm = linear ? toLin(B) : B;
-                const wR = linear ? 0.2126 : 0.299; const wG = linear ? 0.7152 : 0.587; const wB = linear ? 0.0722 : 0.114;
-                const Gray = wR * R + wG * G + wB * B;
-                const dR = R - Gray, dG = G - Gray, dB = B - Gray;
-                const dist = Math.sqrt(dR*dR + dG*dG + dB*dB);
-                return (
-                  <>
-                    <div>Gray point: [{Gray.toFixed(2)}, {Gray.toFixed(2)}, {Gray.toFixed(2)}]</div>
-                    <div>Chroma vector: [R−Gray, G−Gray, B−Gray] = [{dR.toFixed(2)}, {dG.toFixed(2)}, {dB.toFixed(2)}]</div>
-                    <div>Distance to gray axis: ||x − Gray·1||₂ ≈ {dist.toFixed(2)}</div>
-                  </>
-                );
-              })()}
-            </div>
-          </div>
+          
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">What this means</div>
             <div className="text-muted-foreground mt-2 text-xs">
@@ -290,21 +254,20 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-foreground">Scalar Multiplication</h3>
             <p className="text-sm text-muted-foreground">
-              Contrast scales the color along the ray from mid‑gray [128,128,128] to the pixel: multiply (x − mid‑gray)
-              by a factor and add mid‑gray back.
+              Contrast is achieved by scaling each color channel around the midpoint (128).
             </p>
           </div>
 
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Contrast (scale around midpoint)</h4>
-            <RGBCubeVisualizer mode="contrast" params={{ contrast }} selectedRGB={selectedRGB} />
+            <RGBCubeVisualizer mode="contrast" params={{ contrast }} selectedRGB={selectedRGB} lastChange={effectiveLastChange} />
           </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
             <div className="text-muted-foreground mt-2 text-xs">
               We scale in the direction from the midpoint of the gray vector: take the vector from mid‑gray
               (128,128,128) to the pixel and stretch or compress it. The direction is preserved; only the distance
-              along that ray changes.
+              along that vector changes.
             </div>
           </div>
           
@@ -386,7 +349,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Saturation (interpolate to gray)</h4>
-            <RGBCubeVisualizer mode="saturation" params={{ saturation, linearSaturation }} selectedRGB={selectedRGB} />
+            <RGBCubeVisualizer mode="saturation" params={{ saturation, linearSaturation }} selectedRGB={selectedRGB} lastChange={effectiveLastChange} />
           </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
@@ -509,7 +472,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           </div>
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube Rotation</h4>
-            <RGBCubeVisualizer mode="hue" params={{ hue }} selectedRGB={selectedRGB} />
+            <RGBCubeVisualizer mode="hue" params={{ hue }} selectedRGB={selectedRGB} lastChange={effectiveLastChange} />
           </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
@@ -595,6 +558,17 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               and due to display gamma.
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="all" className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-foreground">All Changes (vector overlays)</h3>
+            <p className="text-sm text-muted-foreground">Shows auxiliary vectors for brightness, contrast, saturation, vibrance, and hue simultaneously.</p>
+          </div>
+          <Card className="p-4 border-border bg-card">
+            <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: All vector-based transforms</h4>
+            <RGBCubeVisualizer mode="all" params={{ brightness, contrast, saturation, vibrance, hue, linearSaturation }} selectedRGB={selectedRGB} lastChange={effectiveLastChange} transformOrder={transformOrder} />
+          </Card>
         </TabsContent>
       </Tabs>
     </Card>

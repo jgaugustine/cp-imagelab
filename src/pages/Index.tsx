@@ -102,7 +102,7 @@ export default function Index() {
                   <label className="text-sm font-medium text-foreground mb-2 block">
                     Contrast: {contrast.toFixed(2)}x
                   </label>
-                  <Slider value={[contrast]} onValueChange={([v]) => setContrast(v)} min={0} max={3} step={0.01} />
+                  <Slider value={[contrast]} onValueChange={([v]) => setContrast(v)} min={0} max={2} step={0.01} />
                 </div>
 
                 <div>
@@ -122,9 +122,9 @@ export default function Index() {
 
                 <div>
                   <label className="text-sm font-medium text-foreground mb-2 block">
-                    Hue Rotation: {hue}°
+                    Hue Rotation: {hue > 0 ? '+' : ''}{hue}°
                   </label>
-                  <Slider value={[hue]} onValueChange={([v]) => setHue(v)} min={0} max={360} step={1} />
+                  <Slider value={[hue]} onValueChange={([v]) => setHue(v)} min={-180} max={180} step={1} />
                 </div>
 
                 <Button variant="outline" className="w-full" onClick={() => {
