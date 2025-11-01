@@ -414,7 +414,7 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
     // Update previous params snapshot after rendering
     prevParamsRef.current = { ...params };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, paramsBrightness, paramsContrast, paramsSaturation, paramsVibrance, paramsHue, paramsLinearSaturation, selectedRGB, yaw, pitch, zoom, showAllChanges, lastChange, transformOrder]);
+  }, [mode, paramsBrightness, paramsContrast, paramsSaturation, paramsVibrance, paramsHue, paramsLinearSaturation, selectedRGB, yaw, pitch, zoom, showAllChanges, lastChange, transformOrder, hasImage]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
