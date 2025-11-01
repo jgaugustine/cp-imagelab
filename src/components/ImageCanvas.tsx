@@ -62,10 +62,10 @@ const buildContrastMatrix = (value: number): { matrix: number[]; offset: number[
 };
 
 // Build saturation matrix (gamma space): gray + (rgb - gray) * factor
-// Uses Rec.601 weights: wR=0.299, wG=0.587, wB=0.114
+// Uses Rec.709 weights: wR=0.2126, wG=0.7152, wB=0.0722 (sRGB luminance)
 // Formula: r_new = gray + (r - gray) * s = r*s + gray*(1-s)
 // Expanding: r_new = r*(wR + (1-wR)*s) + g*wG*(1-s) + b*wB*(1-s)
-const buildSaturationMatrixGamma = (saturation: number): number[] => {
+const buildSaturationMatrix = (saturation: number): number[] => {
   if (saturation === 1) {
     // Identity matrix
     return [
@@ -75,9 +75,9 @@ const buildSaturationMatrixGamma = (saturation: number): number[] => {
     ];
   }
   
-  const wR = 0.299;
-  const wG = 0.587;
-  const wB = 0.114;
+  const wR = 0.2126;
+  const wG = 0.7152;
+  const wB = 0.0722;
   const s = saturation;
   
   // For each channel: result = gray + (channel - gray) * s
@@ -149,9 +149,9 @@ const applyContrast = (rgb: RGB, value: number): RGB => {
   };
 };
 
-const applySaturationGamma = (rgb: RGB, saturation: number): RGB => {
+const applySaturation = (rgb: RGB, saturation: number): RGB => {
   if (saturation === 1) return rgb;
-  const gray = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b; // Rec.601
+  const gray = 0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b; // Rec.709 sRGB luminance
   if (saturation === 0) {
     // Exact projection to gray in gamma space (no quantization to avoid banding)
     const g = clamp(gray);
@@ -192,14 +192,14 @@ const applySaturationLinear = (rgb: RGB, saturation: number): RGB => {
 };
 
 // Vibrance in gamma-encoded sRGB space
-const applyVibranceGamma = (rgb: RGB, vibrance: number): RGB => {
+const applyVibrance = (rgb: RGB, vibrance: number): RGB => {
   if (vibrance === 0) return rgb;
   const R = rgb.r, G = rgb.g, B = rgb.b;
   const maxC = Math.max(R, G, B);
   const minC = Math.min(R, G, B);
   const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
   const f = 1 + vibrance * (1 - sEst);
-  const gray = 0.299 * R + 0.587 * G + 0.114 * B;
+  const gray = 0.2126 * R + 0.7152 * G + 0.0722 * B; // Rec.709 sRGB luminance
   // If already gray, nothing changes
   if (R === G && G === B) return { r: R, g: G, b: B };
   return {
@@ -356,10 +356,10 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
       case 'contrast': return applyContrast(rgb, value);
       case 'saturation': return linearSaturation
         ? applySaturationLinear(rgb, value)
-        : applySaturationGamma(rgb, value);
+        : applySaturation(rgb, value);
       case 'vibrance': return linearSaturation
         ? applyVibranceLinear(rgb, vibrance ?? 0)
-        : applyVibranceGamma(rgb, vibrance ?? 0);
+        : applyVibrance(rgb, vibrance ?? 0);
       case 'hue': return applyHue(rgb, value);
     }
   };
@@ -413,7 +413,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
           matrixBatch.push(buildContrastMatrix(batchValue));
         } else if (batchType === 'saturation') {
           // Gamma saturation uses matrix
-          const satMatrix = buildSaturationMatrixGamma(batchValue);
+          const satMatrix = buildSaturationMatrix(batchValue);
           matrixBatch.push({ matrix: satMatrix, offset: [0, 0, 0] });
         } else if (batchType === 'hue') {
           const hueMatrix = buildHueMatrix(batchValue);
@@ -447,7 +447,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
           if (perPixelType === 'vibrance') {
             transformed = linearSaturation
               ? applyVibranceLinear(rgb, vibrance ?? 0)
-              : applyVibranceGamma(rgb, vibrance ?? 0);
+              : applyVibrance(rgb, vibrance ?? 0);
           } else if (perPixelType === 'saturation') {
             transformed = applySaturationLinear(rgb, perPixelValue);
           } else {

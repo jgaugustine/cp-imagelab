@@ -417,6 +417,9 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
   }, [mode, paramsBrightness, paramsContrast, paramsSaturation, paramsVibrance, paramsHue, paramsLinearSaturation, selectedRGB, yaw, pitch, zoom, showAllChanges, lastChange, transformOrder, hasImage]);
 
   useEffect(() => {
+    // Only set up event listeners when we have an image (canvas exists)
+    if (!hasImage) return;
+    
     const canvas = canvasRef.current;
     if (!canvas) return;
     const onDown = (e: MouseEvent) => {
@@ -469,7 +472,7 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
       window.removeEventListener('touchmove', onTMove);
       window.removeEventListener('touchend', onTUp);
     };
-  }, []);
+  }, [hasImage]);
 
   if (!hasImage) {
     return (

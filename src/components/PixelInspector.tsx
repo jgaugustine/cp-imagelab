@@ -83,7 +83,7 @@ export function PixelInspector({
 
   const applyBrightnessLoc = (rgb: RGB): RGB => ({ r: clamp(rgb.r + brightness), g: clamp(rgb.g + brightness), b: clamp(rgb.b + brightness) });
   const applyContrastLoc = (rgb: RGB): RGB => ({ r: clamp((rgb.r - 128) * contrast + 128), g: clamp((rgb.g - 128) * contrast + 128), b: clamp((rgb.b - 128) * contrast + 128) });
-  const applySaturationGammaLoc = (rgb: RGB, sat: number, vib: number): RGB => {
+  const applySaturationLoc = (rgb: RGB, sat: number, vib: number): RGB => {
     const gray = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
     const maxC = Math.max(rgb.r, rgb.g, rgb.b);
     const minC = Math.min(rgb.r, rgb.g, rgb.b);
@@ -132,8 +132,8 @@ export function PixelInspector({
       const t = transformOrder[i];
       if (t === 'brightness') color = applyBrightnessLoc(color);
       else if (t === 'contrast') color = applyContrastLoc(color);
-      else if (t === 'saturation') color = linearSaturation ? applySaturationLinearLoc(color, saturation, vibrance) : applySaturationGammaLoc(color, saturation, vibrance);
-      else if (t === 'vibrance') color = linearSaturation ? applySaturationLinearLoc(color, 1, vibrance) : applySaturationGammaLoc(color, 1, vibrance);
+      else if (t === 'saturation') color = linearSaturation ? applySaturationLinearLoc(color, saturation, vibrance) : applySaturationLoc(color, saturation, vibrance);
+      else if (t === 'vibrance') color = linearSaturation ? applySaturationLinearLoc(color, 1, vibrance) : applySaturationLoc(color, 1, vibrance);
       else if (t === 'hue') color = applyHueLoc(color);
     }
     return color;
