@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { Matrix } from "ml-matrix";
 import { PixelInspector } from "./PixelInspector";
 import { TransformationType, RGB } from "@/types/transformations";
 
@@ -32,46 +31,6 @@ interface InspectorData {
 }
 
 const clamp = (val: number): number => Math.max(0, Math.min(255, val));
-
-// Helper functions for matrix operations using ml-matrix library
-// Convert flat array [m00, m01, m02, m10, m11, m12, m20, m21, m22] to Matrix instance
-const flatToMatrix = (flat: number[]): Matrix => {
-  return new Matrix([
-    [flat[0], flat[1], flat[2]],
-    [flat[3], flat[4], flat[5]],
-    [flat[6], flat[7], flat[8]]
-  ]);
-};
-
-// Convert Matrix instance to flat array
-const matrixToFlat = (matrix: Matrix): number[] => {
-  const rows = matrix.to2DArray();
-  return [
-    rows[0][0], rows[0][1], rows[0][2],
-    rows[1][0], rows[1][1], rows[1][2],
-    rows[2][0], rows[2][1], rows[2][2]
-  ];
-};
-
-// Multiply two 3x3 matrices using dot product (equivalent to Python's @ operator)
-// Uses ml-matrix's .mmul() method for explicit matrix multiplication
-// Example: matrixMultiply(A, B) computes B @ A (matrix multiplication)
-const matrixMultiply = (m1: number[], m2: number[]): number[] => {
-  const M1 = flatToMatrix(m1);
-  const M2 = flatToMatrix(m2);
-  const result = M2.mmul(M1); // Explicit dot product: M2 @ M1 (like Python's @ operator)
-  return matrixToFlat(result);
-};
-
-// Multiply 3x3 matrix by 3x1 vector using dot product (equivalent to Python's @ operator)
-// Uses ml-matrix's .mmul() method for explicit matrix-vector multiplication
-// Example: matrixVectorMultiply(M, v) computes M @ v (matrix-vector product)
-const matrixVectorMultiply = (matrix: number[], vector: number[]): number[] => {
-  const M = flatToMatrix(matrix);
-  const v = new Matrix([[vector[0]], [vector[1]], [vector[2]]]);
-  const result = M.mmul(v); // Explicit dot product: M @ v (like Python's @ operator)
-  return [result.get(0, 0), result.get(1, 0), result.get(2, 0)];
-};
 
 // Matrix builder functions for linear algebra operations
 // Matrices are represented as flat arrays: [m00, m01, m02, m10, m11, m12, m20, m21, m22] (row-major)
@@ -276,7 +235,6 @@ const applyVibranceLinear = (rgb: RGB, vibrance: number): RGB => {
 // Compose multiple affine transformations into a single matrix + offset
 // For transformations that only have a matrix (no offset), pass offset: [0, 0, 0]
 // Composition: if y = M2 * (M1 * x + o1) + o2, then y = (M2 * M1) * x + (M2 * o1 + o2)
-// Uses explicit matrix multiplication (dot product) from ml-matrix library
 const composeAffineTransforms = (transforms: Array<{ matrix: number[]; offset: number[] }>): { matrix: number[]; offset: number[] } => {
   if (transforms.length === 0) {
     // Identity transformation
@@ -294,51 +252,63 @@ const composeAffineTransforms = (transforms: Array<{ matrix: number[]; offset: n
   let resultMatrix = [...transforms[0].matrix];
   let resultOffset = [...transforms[0].offset];
   
-  // Compose with each subsequent transformation using explicit matrix multiplication
+  // Compose with each subsequent transformation
   for (let i = 1; i < transforms.length; i++) {
     const M2 = transforms[i].matrix;
     const o2 = transforms[i].offset;
     
-    // Multiply matrices using dot product: M_result = M2 @ M1 (equivalent to Python's @ operator)
-    resultMatrix = matrixMultiply(resultMatrix, M2);
-    
-    // Transform previous offset through M2 using matrix-vector multiplication: M2 @ o1 + o2
-    const transformedOffset = matrixVectorMultiply(M2, resultOffset);
-    resultOffset = [
-      transformedOffset[0] + o2[0],
-      transformedOffset[1] + o2[1],
-      transformedOffset[2] + o2[2]
+    // Multiply matrices: M_result = M2 * M1
+    // Matrix multiplication: (M2 * M1)[i][j] = sum_k M2[i][k] * M1[k][j]
+    const newMatrix = [
+      M2[0] * resultMatrix[0] + M2[1] * resultMatrix[3] + M2[2] * resultMatrix[6],
+      M2[0] * resultMatrix[1] + M2[1] * resultMatrix[4] + M2[2] * resultMatrix[7],
+      M2[0] * resultMatrix[2] + M2[1] * resultMatrix[5] + M2[2] * resultMatrix[8],
+      M2[3] * resultMatrix[0] + M2[4] * resultMatrix[3] + M2[5] * resultMatrix[6],
+      M2[3] * resultMatrix[1] + M2[4] * resultMatrix[4] + M2[5] * resultMatrix[7],
+      M2[3] * resultMatrix[2] + M2[4] * resultMatrix[5] + M2[5] * resultMatrix[8],
+      M2[6] * resultMatrix[0] + M2[7] * resultMatrix[3] + M2[8] * resultMatrix[6],
+      M2[6] * resultMatrix[1] + M2[7] * resultMatrix[4] + M2[8] * resultMatrix[7],
+      M2[6] * resultMatrix[2] + M2[7] * resultMatrix[5] + M2[8] * resultMatrix[8]
     ];
+    
+    // Transform previous offset through M2: M2 * o1 + o2
+    const newOffset = [
+      M2[0] * resultOffset[0] + M2[1] * resultOffset[1] + M2[2] * resultOffset[2] + o2[0],
+      M2[3] * resultOffset[0] + M2[4] * resultOffset[1] + M2[5] * resultOffset[2] + o2[1],
+      M2[6] * resultOffset[0] + M2[7] * resultOffset[1] + M2[8] * resultOffset[2] + o2[2]
+    ];
+    
+    resultMatrix = newMatrix;
+    resultOffset = newOffset;
   }
   
   return { matrix: resultMatrix, offset: resultOffset };
 };
 
-// Apply 3x3 matrix to RGB vector using explicit matrix-vector multiplication (dot product)
+// Apply 3x3 matrix to RGB vector
 const applyMatrix = (rgb: RGB, matrix: number[]): RGB => {
-  const result = matrixVectorMultiply(matrix, [rgb.r, rgb.g, rgb.b]);
   return {
-    r: clamp(result[0]),
-    g: clamp(result[1]),
-    b: clamp(result[2])
+    r: clamp(rgb.r * matrix[0] + rgb.g * matrix[1] + rgb.b * matrix[2]),
+    g: clamp(rgb.r * matrix[3] + rgb.g * matrix[4] + rgb.b * matrix[5]),
+    b: clamp(rgb.r * matrix[6] + rgb.g * matrix[7] + rgb.b * matrix[8])
   };
 };
 
-// Apply affine transformation (matrix + offset) to RGB vector using explicit matrix-vector multiplication
+// Apply affine transformation (matrix + offset) to RGB vector
 const applyAffineTransform = (rgb: RGB, matrix: number[], offset: number[]): RGB => {
-  const result = matrixVectorMultiply(matrix, [rgb.r, rgb.g, rgb.b]);
   return {
-    r: clamp(result[0] + offset[0]),
-    g: clamp(result[1] + offset[1]),
-    b: clamp(result[2] + offset[2])
+    r: clamp(rgb.r * matrix[0] + rgb.g * matrix[1] + rgb.b * matrix[2] + offset[0]),
+    g: clamp(rgb.r * matrix[3] + rgb.g * matrix[4] + rgb.b * matrix[5] + offset[1]),
+    b: clamp(rgb.r * matrix[6] + rgb.g * matrix[7] + rgb.b * matrix[8] + offset[2])
   };
 };
 
 // Apply matrix transformation to image data in a vectorized way
 // Processes all pixels in batch using TypedArray operations
-// Uses explicit matrix-vector multiplication (dot product) from ml-matrix library
 const applyMatrixToImageData = (imageData: ImageData, matrix: number[], offset: number[]): void => {
   const { data } = imageData;
+  const m = matrix;
+  const o = offset;
   
   // Process all pixels in batch
   for (let i = 0; i < data.length; i += 4) {
@@ -352,11 +322,10 @@ const applyMatrixToImageData = (imageData: ImageData, matrix: number[], offset: 
     const g = data[i + 1];
     const b = data[i + 2];
     
-    // Apply affine transformation using explicit matrix-vector multiplication: result = M @ rgb + offset
-    const result = matrixVectorMultiply(matrix, [r, g, b]);
-    data[i] = clamp(result[0] + offset[0]);
-    data[i + 1] = clamp(result[1] + offset[1]);
-    data[i + 2] = clamp(result[2] + offset[2]);
+    // Apply affine transformation: result = M * rgb + offset
+    data[i] = clamp(r * m[0] + g * m[1] + b * m[2] + o[0]);
+    data[i + 1] = clamp(r * m[3] + g * m[4] + b * m[5] + o[1]);
+    data[i + 2] = clamp(r * m[6] + g * m[7] + b * m[8] + o[2]);
     // Alpha channel unchanged
   }
 };
