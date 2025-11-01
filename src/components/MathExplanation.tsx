@@ -2,7 +2,7 @@ import { Card } from "@/components/ui/card";
 import RGBCubeVisualizer from "@/components/RGBCubeVisualizer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TransformationOrderControls } from "@/components/TransformationOrderControls";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 
 interface MathExplanationProps {
   brightness: number;
@@ -18,9 +18,11 @@ interface MathExplanationProps {
   // Optional pipeline order for All Changes
   transformOrder?: ('brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue')[];
   onTransformOrderChange?: (order: ('brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue')[]) => void;
+  // Image upload state
+  hasImage?: boolean;
 }
 
-export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, onTransformOrderChange }: MathExplanationProps) {
+export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, onTransformOrderChange, hasImage }: MathExplanationProps) {
   const [localLastChange, setLocalLastChange] = useState<'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | undefined>(undefined);
   const prevRef = useRef({ brightness, contrast, saturation, vibrance, hue });
 
@@ -35,6 +37,15 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
   }, [brightness, contrast, saturation, vibrance, hue]);
 
   const effectiveLastChange = lastChange ?? localLastChange;
+
+  // Memoize params objects to prevent unnecessary RGBCubeVisualizer recalculations
+  const brightnessParams = useMemo(() => ({ brightness }), [brightness]);
+  const contrastParams = useMemo(() => ({ contrast }), [contrast]);
+  const saturationParams = useMemo(() => ({ saturation, linearSaturation }), [saturation, linearSaturation]);
+  const vibranceParams = useMemo(() => ({ vibrance, linearSaturation }), [vibrance, linearSaturation]);
+  const hueParams = useMemo(() => ({ hue }), [hue]);
+  const allParams = useMemo(() => ({ brightness, contrast, saturation, vibrance, hue, linearSaturation }), [brightness, contrast, saturation, vibrance, hue, linearSaturation]);
+
   return (
     <Card className="p-6 border-border bg-card h-fit">
       <Tabs defaultValue="brightness" className="w-full">
@@ -73,7 +84,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Brightness (addition)</h4>
-            <RGBCubeVisualizer mode="brightness" params={{ brightness }} selectedRGB={selectedRGB} lastChange={effectiveLastChange} />
+            <RGBCubeVisualizer mode="brightness" params={brightnessParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} />
           </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
@@ -144,7 +155,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Vibrance (adaptive stretch from gray)</h4>
-            <RGBCubeVisualizer mode="vibrance" params={{ vibrance, linearSaturation }} selectedRGB={selectedRGB} lastChange={effectiveLastChange} />
+            <RGBCubeVisualizer mode="vibrance" params={vibranceParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} />
           </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
@@ -265,7 +276,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Contrast (scale around midpoint)</h4>
-            <RGBCubeVisualizer mode="contrast" params={{ contrast }} selectedRGB={selectedRGB} lastChange={effectiveLastChange} />
+            <RGBCubeVisualizer mode="contrast" params={contrastParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} />
           </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
@@ -354,7 +365,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Saturation (interpolate to gray)</h4>
-            <RGBCubeVisualizer mode="saturation" params={{ saturation, linearSaturation }} selectedRGB={selectedRGB} lastChange={effectiveLastChange} />
+            <RGBCubeVisualizer mode="saturation" params={saturationParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} />
           </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
@@ -477,7 +488,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           </div>
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube Rotation</h4>
-            <RGBCubeVisualizer mode="hue" params={{ hue }} selectedRGB={selectedRGB} lastChange={effectiveLastChange} />
+            <RGBCubeVisualizer mode="hue" params={hueParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} />
           </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
@@ -555,7 +566,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           </div>
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: All vector-based transforms</h4>
-            <RGBCubeVisualizer mode="all" params={{ brightness, contrast, saturation, vibrance, hue, linearSaturation }} selectedRGB={selectedRGB} lastChange={effectiveLastChange} transformOrder={transformOrder} />
+            <RGBCubeVisualizer mode="all" params={allParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} transformOrder={transformOrder} hasImage={hasImage} />
           </Card>
         </TabsContent>
       </Tabs>

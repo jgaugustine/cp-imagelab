@@ -63,7 +63,8 @@ const buildContrastMatrix = (value: number): { matrix: number[]; offset: number[
 
 // Build saturation matrix (gamma space): gray + (rgb - gray) * factor
 // Uses Rec.601 weights: wR=0.299, wG=0.587, wB=0.114
-// Formula: M = I + (s - 1) * P where P is projection matrix to gray
+// Formula: r_new = gray + (r - gray) * s = r*s + gray*(1-s)
+// Expanding: r_new = r*(wR + (1-wR)*s) + g*wG*(1-s) + b*wB*(1-s)
 const buildSaturationMatrixGamma = (saturation: number): number[] => {
   if (saturation === 1) {
     // Identity matrix
@@ -79,17 +80,17 @@ const buildSaturationMatrixGamma = (saturation: number): number[] => {
   const wB = 0.114;
   const s = saturation;
   
-  // M = I + (s - 1) * P where P projects to gray
-  // P = [[wR, wG, wB], [wR, wG, wB], [wR, wG, wB]]
-  // M[i,j] = (i === j ? 1 : 0) + (s - 1) * w[j]
-  // M[0] = wR*s + (1-s), wG*s, wB*s
-  // M[1] = wR*s, wG*s + (1-s), wB*s
-  // M[2] = wR*s, wG*s, wB*s + (1-s)
+  // For each channel: result = gray + (channel - gray) * s
+  // = channel*s + gray*(1-s)
+  // = channel*s + (wR*R + wG*G + wB*B)*(1-s)
+  // R row: r_new = r*(wR + (1-wR)*s) + g*wG*(1-s) + b*wB*(1-s)
+  // G row: g_new = r*wR*(1-s) + g*(wG + (1-wG)*s) + b*wB*(1-s)
+  // B row: b_new = r*wR*(1-s) + g*wG*(1-s) + b*(wB + (1-wB)*s)
   
   return [
-    wR * s + (1 - s), wG * s, wB * s,
-    wR * s, wG * s + (1 - s), wB * s,
-    wR * s, wG * s, wB * s + (1 - s)
+    wR + (1 - wR) * s, wG * (1 - s), wB * (1 - s),
+    wR * (1 - s), wG + (1 - wG) * s, wB * (1 - s),
+    wR * (1 - s), wG * (1 - s), wB + (1 - wB) * s
   ];
 };
 

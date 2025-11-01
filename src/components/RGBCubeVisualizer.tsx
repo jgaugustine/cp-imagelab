@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { TransformationType } from "@/types/transformations";
 
 type Mode = 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | 'all';
@@ -19,6 +19,8 @@ interface RGBCubeVisualizerProps {
   lastChange?: Mode;
   // Optional pipeline order when computing full transformed in 'all'
   transformOrder?: TransformationType[];
+  // Image upload state
+  hasImage?: boolean;
 }
 
 const clamp = (v: number, min = 0, max = 255) => Math.max(min, Math.min(max, v));
@@ -107,7 +109,7 @@ function drawArrow(
   ctx.fill();
 }
 
-export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllChanges, lastChange, transformOrder }: RGBCubeVisualizerProps) {
+export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllChanges, lastChange, transformOrder, hasImage }: RGBCubeVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState<number>(-35);
   const [pitch, setPitch] = useState<number>(20);
@@ -117,6 +119,15 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
   const width = 320;
   const height = 220;
   const prevParamsRef = useRef<{ brightness?: number; contrast?: number; saturation?: number; vibrance?: number; hue?: number; linearSaturation?: boolean }>({ ...params });
+
+  // Extract individual params for dependency tracking (prevents unnecessary recalculations)
+  // This ensures the effect only runs when actual param values change, not just the object reference
+  const paramsBrightness = params.brightness;
+  const paramsContrast = params.contrast;
+  const paramsSaturation = params.saturation;
+  const paramsVibrance = params.vibrance;
+  const paramsHue = params.hue;
+  const paramsLinearSaturation = params.linearSaturation;
 
   function computeTransformedFor(original: { r: number; g: number; b: number }, forMode: Mode, customParams?: typeof params) {
     const p = customParams ?? params;
@@ -402,7 +413,8 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
 
     // Update previous params snapshot after rendering
     prevParamsRef.current = { ...params };
-  }, [mode, params, selectedRGB, yaw, pitch, zoom, showAllChanges, lastChange, transformOrder]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, paramsBrightness, paramsContrast, paramsSaturation, paramsVibrance, paramsHue, paramsLinearSaturation, selectedRGB, yaw, pitch, zoom, showAllChanges, lastChange, transformOrder]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -458,6 +470,18 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
       window.removeEventListener('touchend', onTUp);
     };
   }, []);
+
+  if (!hasImage) {
+    return (
+      <div className="space-y-2">
+        <div className="bg-muted rounded-lg p-8 flex items-center justify-center min-h-[220px]">
+          <div className="text-center text-muted-foreground">
+            <p className="text-sm">Please upload an image to view the RGB cube visualization</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">

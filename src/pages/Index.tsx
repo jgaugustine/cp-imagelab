@@ -154,6 +154,7 @@ export default function Index() {
               linearSaturation={linearSaturation}
               onToggleLinearSaturation={setLinearSaturation}
               selectedRGB={selectedRGB || undefined}
+              hasImage={!!image}
             />
           </div>
         </div>
