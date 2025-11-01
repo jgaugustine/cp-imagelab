@@ -378,6 +378,8 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           
           
 
+          {/* Commented out - Computation space section - will re-implement later */}
+          {/* 
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-muted-foreground mb-2">Computation space</div>
             <div className="flex items-center gap-2 text-sm">
@@ -398,6 +400,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               Affects Saturation and Vibrance only; Brightness, Contrast, and Hue use sRGB.
             </div>
           </div>
+          */}
 
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Numeric example (respects toggle)</div>
