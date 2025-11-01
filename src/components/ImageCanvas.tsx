@@ -62,7 +62,7 @@ const buildContrastMatrix = (value: number): { matrix: number[]; offset: number[
 };
 
 // Build saturation matrix (gamma space): gray + (rgb - gray) * factor
-// Uses Rec.709 weights: wR=0.2126, wG=0.7152, wB=0.0722 (sRGB luminance)
+// Uses Rec.601 weights: wR=0.299, wG=0.587, wB=0.114 (gamma-encoded approximation)
 // Formula: r_new = gray + (r - gray) * s = r*s + gray*(1-s)
 // Expanding: r_new = r*(wR + (1-wR)*s) + g*wG*(1-s) + b*wB*(1-s)
 const buildSaturationMatrix = (saturation: number): number[] => {
@@ -75,9 +75,9 @@ const buildSaturationMatrix = (saturation: number): number[] => {
     ];
   }
   
-  const wR = 0.2126;
-  const wG = 0.7152;
-  const wB = 0.0722;
+  const wR = 0.299;
+  const wG = 0.587;
+  const wB = 0.114;
   const s = saturation;
   
   // For each channel: result = gray + (channel - gray) * s
@@ -151,7 +151,7 @@ const applyContrast = (rgb: RGB, value: number): RGB => {
 
 const applySaturation = (rgb: RGB, saturation: number): RGB => {
   if (saturation === 1) return rgb;
-  const gray = 0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b; // Rec.709 sRGB luminance
+  const gray = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b; // Rec.601 gamma-encoded approximation
   if (saturation === 0) {
     // Exact projection to gray in gamma space (no quantization to avoid banding)
     const g = clamp(gray);
@@ -199,7 +199,7 @@ const applyVibrance = (rgb: RGB, vibrance: number): RGB => {
   const minC = Math.min(R, G, B);
   const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
   const f = 1 + vibrance * (1 - sEst);
-  const gray = 0.2126 * R + 0.7152 * G + 0.0722 * B; // Rec.709 sRGB luminance
+  const gray = 0.299 * R + 0.587 * G + 0.114 * B; // Rec.601 gamma-encoded approximation
   // If already gray, nothing changes
   if (R === G && G === B) return { r: R, g: G, b: B };
   return {
