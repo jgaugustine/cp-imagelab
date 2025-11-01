@@ -32,6 +32,95 @@ interface InspectorData {
 
 const clamp = (val: number): number => Math.max(0, Math.min(255, val));
 
+// Matrix builder functions for linear algebra operations
+// Matrices are represented as flat arrays: [m00, m01, m02, m10, m11, m12, m20, m21, m22] (row-major)
+
+// Build brightness transformation: rgb + value
+// Returns identity matrix + offset vector
+const buildBrightnessMatrix = (value: number): { matrix: number[]; offset: number[] } => {
+  // Identity matrix
+  const matrix = [
+    1, 0, 0,
+    0, 1, 0,
+    0, 0, 1
+  ];
+  const offset = [value, value, value];
+  return { matrix, offset };
+};
+
+// Build contrast transformation: (rgb - 128) * value + 128 = rgb * value + 128 * (1 - value)
+// Returns scale matrix + offset vector
+const buildContrastMatrix = (value: number): { matrix: number[]; offset: number[] } => {
+  // Scale matrix
+  const matrix = [
+    value, 0, 0,
+    0, value, 0,
+    0, 0, value
+  ];
+  const offset = [128 * (1 - value), 128 * (1 - value), 128 * (1 - value)];
+  return { matrix, offset };
+};
+
+// Build saturation matrix (gamma space): gray + (rgb - gray) * factor
+// Uses Rec.601 weights: wR=0.299, wG=0.587, wB=0.114
+// Formula: M = I + (s - 1) * P where P is projection matrix to gray
+const buildSaturationMatrixGamma = (saturation: number): number[] => {
+  if (saturation === 1) {
+    // Identity matrix
+    return [
+      1, 0, 0,
+      0, 1, 0,
+      0, 0, 1
+    ];
+  }
+  
+  const wR = 0.299;
+  const wG = 0.587;
+  const wB = 0.114;
+  const s = saturation;
+  
+  // M = I + (s - 1) * P where P projects to gray
+  // P = [[wR, wG, wB], [wR, wG, wB], [wR, wG, wB]]
+  // M[i,j] = (i === j ? 1 : 0) + (s - 1) * w[j]
+  // M[0] = wR*s + (1-s), wG*s, wB*s
+  // M[1] = wR*s, wG*s + (1-s), wB*s
+  // M[2] = wR*s, wG*s, wB*s + (1-s)
+  
+  return [
+    wR * s + (1 - s), wG * s, wB * s,
+    wR * s, wG * s + (1 - s), wB * s,
+    wR * s, wG * s, wB * s + (1 - s)
+  ];
+};
+
+// Build hue rotation matrix
+const buildHueMatrix = (value: number): number[] => {
+  if (value === 0) {
+    // Identity matrix
+    return [
+      1, 0, 0,
+      0, 1, 0,
+      0, 0, 1
+    ];
+  }
+  
+  const angle = (value * Math.PI) / 180;
+  const cosA = Math.cos(angle);
+  const sinA = Math.sin(angle);
+
+  return [
+    cosA + (1 - cosA) / 3,
+    1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA,
+    1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA,
+    1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA,
+    cosA + 1/3 * (1 - cosA),
+    1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA,
+    1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA,
+    1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA,
+    cosA + 1/3 * (1 - cosA)
+  ];
+};
+
 // sRGB <-> linear-light helpers
 const srgbToLinear = (channel0to255: number): number => {
   const x = channel0to255 / 255;
@@ -142,30 +231,107 @@ const applyVibranceLinear = (rgb: RGB, vibrance: number): RGB => {
   };
 };
 
-const applyHue = (rgb: RGB, value: number): RGB => {
-  if (value === 0) return rgb;
+// Compose multiple affine transformations into a single matrix + offset
+// For transformations that only have a matrix (no offset), pass offset: [0, 0, 0]
+// Composition: if y = M2 * (M1 * x + o1) + o2, then y = (M2 * M1) * x + (M2 * o1 + o2)
+const composeAffineTransforms = (transforms: Array<{ matrix: number[]; offset: number[] }>): { matrix: number[]; offset: number[] } => {
+  if (transforms.length === 0) {
+    // Identity transformation
+    return {
+      matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      offset: [0, 0, 0]
+    };
+  }
   
-  const angle = (value * Math.PI) / 180;
-  const cosA = Math.cos(angle);
-  const sinA = Math.sin(angle);
+  if (transforms.length === 1) {
+    return transforms[0];
+  }
+  
+  // Start with first transformation
+  let resultMatrix = [...transforms[0].matrix];
+  let resultOffset = [...transforms[0].offset];
+  
+  // Compose with each subsequent transformation
+  for (let i = 1; i < transforms.length; i++) {
+    const M2 = transforms[i].matrix;
+    const o2 = transforms[i].offset;
+    
+    // Multiply matrices: M_result = M2 * M1
+    // Matrix multiplication: (M2 * M1)[i][j] = sum_k M2[i][k] * M1[k][j]
+    const newMatrix = [
+      M2[0] * resultMatrix[0] + M2[1] * resultMatrix[3] + M2[2] * resultMatrix[6],
+      M2[0] * resultMatrix[1] + M2[1] * resultMatrix[4] + M2[2] * resultMatrix[7],
+      M2[0] * resultMatrix[2] + M2[1] * resultMatrix[5] + M2[2] * resultMatrix[8],
+      M2[3] * resultMatrix[0] + M2[4] * resultMatrix[3] + M2[5] * resultMatrix[6],
+      M2[3] * resultMatrix[1] + M2[4] * resultMatrix[4] + M2[5] * resultMatrix[7],
+      M2[3] * resultMatrix[2] + M2[4] * resultMatrix[5] + M2[5] * resultMatrix[8],
+      M2[6] * resultMatrix[0] + M2[7] * resultMatrix[3] + M2[8] * resultMatrix[6],
+      M2[6] * resultMatrix[1] + M2[7] * resultMatrix[4] + M2[8] * resultMatrix[7],
+      M2[6] * resultMatrix[2] + M2[7] * resultMatrix[5] + M2[8] * resultMatrix[8]
+    ];
+    
+    // Transform previous offset through M2: M2 * o1 + o2
+    const newOffset = [
+      M2[0] * resultOffset[0] + M2[1] * resultOffset[1] + M2[2] * resultOffset[2] + o2[0],
+      M2[3] * resultOffset[0] + M2[4] * resultOffset[1] + M2[5] * resultOffset[2] + o2[1],
+      M2[6] * resultOffset[0] + M2[7] * resultOffset[1] + M2[8] * resultOffset[2] + o2[2]
+    ];
+    
+    resultMatrix = newMatrix;
+    resultOffset = newOffset;
+  }
+  
+  return { matrix: resultMatrix, offset: resultOffset };
+};
 
-  const matrix = [
-    cosA + (1 - cosA) / 3, 
-    1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA, 
-    1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA,
-    1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA, 
-    cosA + 1/3 * (1 - cosA), 
-    1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA,
-    1/3 * (1 - cosA) - Math.sqrt(1/3) * sinA, 
-    1/3 * (1 - cosA) + Math.sqrt(1/3) * sinA, 
-    cosA + 1/3 * (1 - cosA)
-  ];
-
+// Apply 3x3 matrix to RGB vector
+const applyMatrix = (rgb: RGB, matrix: number[]): RGB => {
   return {
     r: clamp(rgb.r * matrix[0] + rgb.g * matrix[1] + rgb.b * matrix[2]),
     g: clamp(rgb.r * matrix[3] + rgb.g * matrix[4] + rgb.b * matrix[5]),
     b: clamp(rgb.r * matrix[6] + rgb.g * matrix[7] + rgb.b * matrix[8])
   };
+};
+
+// Apply affine transformation (matrix + offset) to RGB vector
+const applyAffineTransform = (rgb: RGB, matrix: number[], offset: number[]): RGB => {
+  return {
+    r: clamp(rgb.r * matrix[0] + rgb.g * matrix[1] + rgb.b * matrix[2] + offset[0]),
+    g: clamp(rgb.r * matrix[3] + rgb.g * matrix[4] + rgb.b * matrix[5] + offset[1]),
+    b: clamp(rgb.r * matrix[6] + rgb.g * matrix[7] + rgb.b * matrix[8] + offset[2])
+  };
+};
+
+// Apply matrix transformation to image data in a vectorized way
+// Processes all pixels in batch using TypedArray operations
+const applyMatrixToImageData = (imageData: ImageData, matrix: number[], offset: number[]): void => {
+  const { data } = imageData;
+  const m = matrix;
+  const o = offset;
+  
+  // Process all pixels in batch
+  for (let i = 0; i < data.length; i += 4) {
+    const alpha = data[i + 3];
+    // Skip transforming fully transparent pixels to preserve background
+    if (alpha === 0) {
+      continue;
+    }
+    
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    
+    // Apply affine transformation: result = M * rgb + offset
+    data[i] = clamp(r * m[0] + g * m[1] + b * m[2] + o[0]);
+    data[i + 1] = clamp(r * m[3] + g * m[4] + b * m[5] + o[1]);
+    data[i + 2] = clamp(r * m[6] + g * m[7] + b * m[8] + o[2]);
+    // Alpha channel unchanged
+  }
+};
+
+const applyHue = (rgb: RGB, value: number): RGB => {
+  const matrix = buildHueMatrix(value);
+  return applyMatrix(rgb, matrix);
 };
 
 export function ImageCanvas({ image, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true, onPixelSelect }: ImageCanvasProps) {
@@ -219,27 +385,81 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
     // Store original image data for inspection (refresh per image/params)
     originalImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-    // Apply transformations in user-defined order
-    for (let i = 0; i < data.length; i += 4) {
-      const alpha = data[i + 3];
-      // Skip transforming fully transparent pixels to preserve background
-      if (alpha === 0) {
-        continue;
-      }
-      let rgb: RGB = { 
-        r: data[i], 
-        g: data[i + 1], 
-        b: data[i + 2] 
-      };
+    // Process transformations sequentially, batching consecutive matrix-compatible transforms
+    // This maintains correct order when matrix and per-pixel transforms are interleaved
+    let i = 0;
+    while (i < transformOrder.length) {
+      // Check if this and following transforms are matrix-compatible
+      const matrixBatch: Array<{ matrix: number[]; offset: number[] }> = [];
+      let batchEnd = i;
       
-      // Apply each transformation in order with clamping
-      for (const transformType of transformOrder) {
-        rgb = applyTransformation(rgb, transformType);
+      while (batchEnd < transformOrder.length) {
+        const batchType = transformOrder[batchEnd];
+        const batchValue = getTransformValue(batchType);
+        
+        // Check if this transform can use matrix operations
+        const isPerPixel = batchType === 'vibrance' || (batchType === 'saturation' && linearSaturation);
+        
+        if (isPerPixel) {
+          // Stop batching when we hit a per-pixel transform
+          break;
+        }
+        
+        // Build matrix for this transform
+        if (batchType === 'brightness') {
+          matrixBatch.push(buildBrightnessMatrix(batchValue));
+        } else if (batchType === 'contrast') {
+          matrixBatch.push(buildContrastMatrix(batchValue));
+        } else if (batchType === 'saturation') {
+          // Gamma saturation uses matrix
+          const satMatrix = buildSaturationMatrixGamma(batchValue);
+          matrixBatch.push({ matrix: satMatrix, offset: [0, 0, 0] });
+        } else if (batchType === 'hue') {
+          const hueMatrix = buildHueMatrix(batchValue);
+          matrixBatch.push({ matrix: hueMatrix, offset: [0, 0, 0] });
+        }
+        
+        batchEnd++;
       }
       
-      data[i] = rgb.r;
-      data[i + 1] = rgb.g;
-      data[i + 2] = rgb.b;
+      // Apply batched matrix transforms if any
+      if (matrixBatch.length > 0) {
+        const composed = composeAffineTransforms(matrixBatch);
+        applyMatrixToImageData(imageData, composed.matrix, composed.offset);
+        i = batchEnd;
+      } else {
+        // Apply per-pixel transform
+        const perPixelType = transformOrder[i];
+        const perPixelValue = getTransformValue(perPixelType);
+        
+        for (let j = 0; j < data.length; j += 4) {
+          const alpha = data[j + 3];
+          if (alpha === 0) continue;
+          
+          const rgb: RGB = {
+            r: data[j],
+            g: data[j + 1],
+            b: data[j + 2]
+          };
+          
+          let transformed: RGB;
+          if (perPixelType === 'vibrance') {
+            transformed = linearSaturation
+              ? applyVibranceLinear(rgb, vibrance ?? 0)
+              : applyVibranceGamma(rgb, vibrance ?? 0);
+          } else if (perPixelType === 'saturation') {
+            transformed = applySaturationLinear(rgb, perPixelValue);
+          } else {
+            transformed = rgb; // Shouldn't happen
+          }
+          
+          data[j] = transformed.r;
+          data[j + 1] = transformed.g;
+          data[j + 2] = transformed.b;
+        }
+        
+        i++;
+      }
     }
 
     ctx.putImageData(imageData, 0, 0);

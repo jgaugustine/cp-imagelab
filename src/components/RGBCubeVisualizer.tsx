@@ -250,6 +250,13 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
     ctx.strokeStyle = "#ef4444"; line(ctx, origin2d, pRaxis);
     ctx.strokeStyle = "#22c55e"; line(ctx, origin2d, pGaxis);
     ctx.strokeStyle = "#3b82f6"; line(ctx, origin2d, pBaxis);
+    ctx.fillStyle = "#e2e8f0";
+    ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("R", pRaxis.x + 10, pRaxis.y);
+    ctx.fillText("G", pGaxis.x - 10, pGaxis.y);
+    ctx.fillText("B", pBaxis.x, pBaxis.y - 10);
 
     const p0 = rp(original.r, original.g, original.b);
     const p1 = rp(transformed.r, transformed.g, transformed.b);
