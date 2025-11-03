@@ -18,6 +18,7 @@ export default function Index() {
   const [transformOrder, setTransformOrder] = useState<TransformationType[]>(['brightness', 'contrast', 'saturation', 'vibrance', 'hue']);
   const [selectedRGB, setSelectedRGB] = useState<RGB | null>(null);
   const [activeTab, setActiveTab] = useState<string>('brightness');
+  const [previewOriginal, setPreviewOriginal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const CanvasAny = ImageCanvas as any;
   const MathAny = MathExplanation as any;
@@ -60,19 +61,32 @@ export default function Index() {
                   Image Preview
                 </h2>
                 {image && (
-                  <Button
-                    className="shrink-0"
-                    variant="outline"
-                    onClick={() => {
-                      setImage(null);
-                      setSelectedRGB(null);
-                      if (fileInputRef.current) {
-                        fileInputRef.current.value = "";
-                      }
-                    }}
-                  >
-                    Remove Image
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      className="shrink-0"
+                      variant="outline"
+                      onPointerDown={() => setPreviewOriginal(true)}
+                      onPointerUp={() => setPreviewOriginal(false)}
+                      onPointerLeave={() => setPreviewOriginal(false)}
+                      onBlur={() => setPreviewOriginal(false)}
+                      aria-pressed={previewOriginal}
+                    >
+                      Show Original
+                    </Button>
+                    <Button
+                      className="shrink-0"
+                      variant="outline"
+                      onClick={() => {
+                        setImage(null);
+                        setSelectedRGB(null);
+                        if (fileInputRef.current) {
+                          fileInputRef.current.value = "";
+                        }
+                      }}
+                    >
+                      Remove Image
+                    </Button>
+                  </div>
                 )}
               </div>
               
@@ -84,7 +98,7 @@ export default function Index() {
                     </Button>
                     <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                   </div>
-                </div> : <div className="aspect-video w-full overflow-hidden"><CanvasAny image={image} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} linearSaturation={linearSaturation} vibrance={vibrance} transformOrder={transformOrder} onPixelSelect={setSelectedRGB} /></div>}
+                </div> : <div className="aspect-video w-full overflow-hidden"><CanvasAny image={image} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} linearSaturation={linearSaturation} vibrance={vibrance} transformOrder={transformOrder} onPixelSelect={setSelectedRGB} previewOriginal={previewOriginal} /></div>}
             </Card>
 
             <Card className="p-6 border-border bg-card">

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { PixelInspector } from "./PixelInspector";
 import { TransformationType, RGB } from "@/types/transformations";
-import { Button } from "@/components/ui/button";
 
 interface ImageCanvasProps {
   image: HTMLImageElement;
@@ -18,6 +17,8 @@ interface ImageCanvasProps {
   enableInspector?: boolean;
   // Emit original pixel RGB when user clicks on the canvas
   onPixelSelect?: (rgb: RGB) => void;
+  // When true, temporarily show original image (no transforms)
+  previewOriginal?: boolean;
 }
 
 interface InspectorData {
@@ -336,11 +337,10 @@ const applyHue = (rgb: RGB, value: number): RGB => {
   return applyMatrix(rgb, matrix);
 };
 
-export function ImageCanvas({ image, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true, onPixelSelect }: ImageCanvasProps) {
+export function ImageCanvas({ image, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true, onPixelSelect, previewOriginal = false }: ImageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [inspectorData, setInspectorData] = useState<InspectorData | null>(null);
   const originalImageDataRef = useRef<ImageData | null>(null);
-  const [showOriginal, setShowOriginal] = useState(false);
 
   const getTransformValue = (type: TransformationType): number => {
     switch (type) {
@@ -389,7 +389,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
     originalImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     // If showing original, skip applying transforms (canvas already has original drawn)
-    if (showOriginal) {
+    if (previewOriginal) {
       return;
     }
 
@@ -471,7 +471,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
     }
 
     ctx.putImageData(imageData, 0, 0);
-  }, [image, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder, showOriginal]);
+  }, [image, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder, previewOriginal]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!enableInspector) return;
@@ -611,20 +611,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
   };
 
   return (
-    <div className="relative w-full h-full">
-      <div className="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 transform">
-        <Button
-          className="pointer-events-auto"
-          variant="secondary"
-          onPointerDown={() => setShowOriginal(true)}
-          onPointerUp={() => setShowOriginal(false)}
-          onPointerLeave={() => setShowOriginal(false)}
-          onBlur={() => setShowOriginal(false)}
-          aria-pressed={showOriginal}
-        >
-          Show Original (Hold)
-        </Button>
-      </div>
+    <>
       <canvas
         ref={canvasRef}
         className="w-full h-full object-contain rounded-lg border border-border cursor-crosshair"
@@ -643,7 +630,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
           linearSaturation={linearSaturation}
         />
       )}
-    </div>
+    </>
   );
 }
 
