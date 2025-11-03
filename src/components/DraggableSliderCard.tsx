@@ -86,7 +86,7 @@ export function DraggableSliderCard({
         </div>
 
         {/* Main content: icon, label, value, and slider */}
-        <div className="flex-1 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div className="flex-1 space-y-3">
           <div className="flex items-center gap-2">
             <div className="text-primary">
               {icon}

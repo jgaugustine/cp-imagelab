@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import RGBCubeVisualizer from "@/components/RGBCubeVisualizer";
-// Tabs removed; we'll render only the active section
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useEffect, useRef, useState, useMemo } from "react";
 
 interface MathExplanationProps {
@@ -23,7 +23,7 @@ interface MathExplanationProps {
   onActiveTabChange?: (value: string) => void;
 }
 
-export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, hasImage, activeTab }: MathExplanationProps) {
+export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, hasImage, activeTab, onActiveTabChange }: MathExplanationProps) {
   const [localLastChange, setLocalLastChange] = useState<'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | undefined>(undefined);
   const prevRef = useRef({ brightness, contrast, saturation, vibrance, hue });
 
@@ -47,20 +47,16 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
   const hueParams = useMemo(() => ({ hue }), [hue]);
   const allParams = useMemo(() => ({ brightness, contrast, saturation, vibrance, hue, linearSaturation }), [brightness, contrast, saturation, vibrance, hue, linearSaturation]);
 
-  // Helper to determine if a tab is visible
-  const isActive = (tabName: string) => activeTab === tabName;
-
   return (
     <Card className="p-6 border-border bg-card h-fit">
-      <div className="w-full">
+      <Tabs value={activeTab} onValueChange={onActiveTabChange} className="w-full">
         <div className="mb-4">
           <h2 className="text-xl font-semibold text-primary">Mathematical Transformations</h2>
         </div>
 
-        <div className={`space-y-4 mt-4 ${!isActive('brightness') ? 'hidden' : ''}`}>
+        <TabsContent value="brightness" className="space-y-4 mt-4">
           <div className="space-y-2">
-            <div className="text-lg font-semibold text-foreground">Brightness</div>
-            <h3 className="text-lg font-semibold text-muted-foreground">Matrix Addition</h3>
+            <h3 className="text-lg font-semibold text-foreground">Matrix Addition</h3>
             <p className="text-sm text-muted-foreground">
               Brightness adjustment is a simple matrix addition operation applied uniformly to all RGB channels.
             </p>
@@ -124,15 +120,14 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <div className="text-foreground font-semibold">What this means</div>
             <div className="text-muted-foreground mt-2 text-xs">
               Brightness simply shifts all three channels by the same amount. Think of moving a point in the RGB cube
-              straight along the gray diagonal. Results are clamped to [0,255] so values don’t wrap.
+              straight along the gray diagonal. Results are clamped to [0,255] so values don't wrap.
             </div>
           </div>
-        </div>
+        </TabsContent>
 
-        <div className={`space-y-4 mt-4 ${!isActive('vibrance') ? 'hidden' : ''}`}>
+        <TabsContent value="vibrance" className="space-y-4 mt-4">
           <div className="space-y-2">
-            <div className="text-lg font-semibold text-foreground">Vibrance</div>
-            <h3 className="text-lg font-semibold text-muted-foreground">Adaptive Color Adjustment</h3>
+            <h3 className="text-lg font-semibold text-foreground">Adaptive Color Adjustment</h3>
             <p className="text-sm text-muted-foreground">
               Vibrance adjusts saturation adaptively: positive values boost low‑chroma pixels more than high‑chroma ones; negative values reduce low‑chroma pixels more gently, preserving skin tones and avoiding clipping.
             </p>
@@ -249,12 +244,11 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             </div>
           </div>
           
-        </div>
+        </TabsContent>
 
-        <div className={`space-y-4 mt-4 ${!isActive('contrast') ? 'hidden' : ''}`}>
+        <TabsContent value="contrast" className="space-y-4 mt-4">
           <div className="space-y-2">
-            <div className="text-lg font-semibold text-foreground">Contrast</div>
-            <h3 className="text-lg font-semibold text-muted-foreground">Scalar Multiplication</h3>
+            <h3 className="text-lg font-semibold text-foreground">Scalar Multiplication</h3>
             <p className="text-sm text-muted-foreground">
               Contrast is achieved by scaling each color channel around the midpoint (128).
             </p>
@@ -335,16 +329,15 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <div className="text-foreground font-semibold">What this means</div>
             <div className="text-muted-foreground mt-2 text-xs">
               Contrast stretches distances from mid-gray (128). Values above 128 move up; values below move down.
-              In linear-light, this behaves like a true dynamic‑range change; in sRGB it’s a display‑referred tweak.
+              In linear-light, this behaves like a true dynamic‑range change; in sRGB it's a display‑referred tweak.
             </div>
           </div>
           
-        </div>
+        </TabsContent>
 
-        <div className={`space-y-4 mt-4 ${!isActive('saturation') ? 'hidden' : ''}`}>
+        <TabsContent value="saturation" className="space-y-4 mt-4">
           <div className="space-y-2">
-            <div className="text-lg font-semibold text-foreground">Saturation</div>
-            <h3 className="text-lg font-semibold text-muted-foreground">Color Space Transformation</h3>
+            <h3 className="text-lg font-semibold text-foreground">Color Space Transformation</h3>
             <p className="text-sm text-muted-foreground">
               Saturation adjusts color intensity by interpolating between the pixel color and a neutral gray for that pixel.
             </p>
@@ -467,12 +460,11 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           
           
           
-        </div>
+        </TabsContent>
 
-        <div className={`space-y-4 mt-4 ${!isActive('hue') ? 'hidden' : ''}`}>
+        <TabsContent value="hue" className="space-y-4 mt-4">
           <div className="space-y-2">
-            <div className="text-lg font-semibold text-foreground">Hue</div>
-            <h3 className="text-lg font-semibold text-muted-foreground">Rotation Matrix</h3>
+            <h3 className="text-lg font-semibold text-foreground">Rotation Matrix</h3>
             <p className="text-sm text-muted-foreground">
               Hue rotation is a 3D rotation in RGB color space around the gray axis.
             </p>
@@ -548,20 +540,20 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               </div>
             </div>
           </Card>
-        </div>
+        </TabsContent>
 
-        <div className={`space-y-4 mt-4 ${!isActive('all') ? 'hidden' : ''}`}>
+        <TabsContent value="all" className="space-y-4 mt-4">
           <div className="space-y-2">
-            <div className="text-lg font-semibold text-foreground">All Changes</div>
-            <h3 className="text-lg font-semibold text-muted-foreground">Visualize Composite Changes</h3>
+            <h3 className="text-lg font-semibold text-foreground">Visualize Composite Changes</h3>
             <p className="text-sm text-muted-foreground">Shows the original and full-pipeline transformed vectors, plus a guide for the most recently edited transform.</p>
           </div>
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: All vector-based transforms</h4>
             <RGBCubeVisualizer mode="all" params={allParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} transformOrder={transformOrder} hasImage={hasImage} />
           </Card>
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
     </Card>
   );
 }
+

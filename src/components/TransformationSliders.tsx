@@ -92,7 +92,7 @@ export function TransformationSliders({
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8
+        distance: 20
       }
     }),
     useSensor(KeyboardSensor)
