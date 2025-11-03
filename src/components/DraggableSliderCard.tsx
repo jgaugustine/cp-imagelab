@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
@@ -42,6 +43,14 @@ export function DraggableSliderCard({
     transition,
     isDragging,
   } = useSortable({ id });
+
+  const [recentlyChanged, setRecentlyChanged] = useState(false);
+  useEffect(() => {
+    // Trigger a brief highlight whenever the value changes
+    setRecentlyChanged(true);
+    const t = setTimeout(() => setRecentlyChanged(false), 600);
+    return () => clearTimeout(t);
+  }, [value]);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -108,6 +117,8 @@ export function DraggableSliderCard({
             max={max}
             step={step}
             disabled={isDragging}
+            thumbHighlight={recentlyChanged}
+            onDoubleClick={() => onChange(0)}
           />
         </div>
       </div>
