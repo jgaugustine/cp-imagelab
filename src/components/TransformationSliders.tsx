@@ -2,12 +2,29 @@ import { DndContext, closestCenter, DragEndEvent, KeyboardSensor, PointerSensor,
 import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Sun, Circle, Palette, Rainbow, Droplet, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { TransformationType } from '@/types/transformations';
+import { TransformationType, FilterKind, FilterInstance, formatValueFor } from '@/types/transformations';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Plus } from 'lucide-react';
 import { DraggableSliderCard } from './DraggableSliderCard';
 
 interface TransformationSlidersProps {
   transformOrder: TransformationType[];
   onOrderChange: (newOrder: TransformationType[]) => void;
+  // New instance-based API (optional until refactor completes)
+  pipeline?: FilterInstance[];
+  onReorderInstances?: (activeId: string, overId: string) => void;
+  onAddInstance?: (kind: FilterKind) => void;
+  onDuplicateInstance?: (id: string) => void;
+  onDeleteInstance?: (id: string) => void;
+  onToggleInstance?: (id: string) => void;
+  onChangeInstanceParams?: (id: string, kind: FilterKind, nextValue: number) => void;
   brightness: number;
   setBrightness: (value: number) => void;
   contrast: number;
@@ -53,7 +70,11 @@ const getTransformConfig = (type: TransformationType) => {
   }
 };
 
-const getValue = (type: TransformationType, props: TransformationSlidersProps): number => {
+type ValueProps = Pick<TransformationSlidersProps,
+  'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue'
+>;
+
+const getValue = (type: TransformationType, props: ValueProps): number => {
   switch (type) {
     case 'brightness': return props.brightness;
     case 'contrast': return props.contrast;
@@ -63,7 +84,11 @@ const getValue = (type: TransformationType, props: TransformationSlidersProps): 
   }
 };
 
-const getOnChange = (type: TransformationType, props: TransformationSlidersProps): (value: number) => void => {
+type SetterProps = Pick<TransformationSlidersProps,
+  'setBrightness' | 'setContrast' | 'setSaturation' | 'setVibrance' | 'setHue'
+>;
+
+const getOnChange = (type: TransformationType, props: SetterProps): (value: number) => void => {
   switch (type) {
     case 'brightness': return props.setBrightness;
     case 'contrast': return props.setContrast;
@@ -81,14 +106,22 @@ const TRANSFORM_LABELS: Record<TransformationType, string> = {
   hue: 'Hue Rotation'
 };
 
-export function TransformationSliders({
-  transformOrder,
-  onOrderChange,
-  onResetAll,
-  onCardClick,
-  activeTab,
-  ...rest
-}: TransformationSlidersProps) {
+export function TransformationSliders(props: TransformationSlidersProps) {
+  const {
+    transformOrder,
+    onOrderChange,
+    pipeline,
+    onReorderInstances,
+    onAddInstance,
+    onDuplicateInstance,
+    onDeleteInstance,
+    onToggleInstance,
+    onChangeInstanceParams,
+    onResetAll,
+    onCardClick,
+    activeTab,
+    ...rest
+  } = props;
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -100,49 +133,124 @@ export function TransformationSliders({
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-
-    if (over && active.id !== over.id) {
-      const oldIndex = transformOrder.indexOf(active.id as TransformationType);
-      const newIndex = transformOrder.indexOf(over.id as TransformationType);
+    if (!over || active.id === over.id) return;
+    if (props.pipeline && props.onReorderInstances) {
+      props.onReorderInstances(String(active.id), String(over.id));
+      return;
+    }
+    // Legacy order reordering
+    const oldIndex = transformOrder.indexOf(active.id as TransformationType);
+    const newIndex = transformOrder.indexOf(over.id as TransformationType);
+    if (oldIndex !== -1 && newIndex !== -1) {
       onOrderChange(arrayMove(transformOrder, oldIndex, newIndex));
     }
   };
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        {onAddInstance && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="default" className="gap-2">
+                <Plus className="w-4 h-4" />
+                New Adjustment
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuLabel>Add Adjustment</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => onAddInstance('brightness')}>Brightness</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAddInstance('contrast')}>Contrast</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAddInstance('saturation')}>Saturation</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAddInstance('vibrance')}>Vibrance</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAddInstance('hue')}>Hue Rotation</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        <div className="flex-1" />
+      </div>
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
       >
-        <SortableContext items={transformOrder} strategy={verticalListSortingStrategy}>
-          <div className="space-y-3">
-            {transformOrder.map((type, index) => {
-              const config = getTransformConfig(type);
-              const value = getValue(type, rest);
-              const onChange = getOnChange(type, rest);
-              
-              return (
-                <DraggableSliderCard
-                  key={type}
-                  id={type}
-                  index={index}
-                  value={value}
-                  onChange={onChange}
-                  min={config.min}
-                  max={config.max}
-                  step={config.step}
-                  defaultValue={config.defaultValue}
-                  formatValue={config.formatValue}
-                  icon={getIcon(type)}
-                  label={TRANSFORM_LABELS[type]}
-                  onClick={onCardClick}
-                  isActive={activeTab === type}
-                />
-              );
-            })}
-          </div>
-        </SortableContext>
+        {props.pipeline ? (
+          <SortableContext items={props.pipeline.map(p => p.id)} strategy={verticalListSortingStrategy}>
+            <div className="space-y-3">
+              {props.pipeline.map((inst, index) => {
+                const type = inst.kind as TransformationType;
+                const config = getTransformConfig(type);
+                const currentValue = type === 'vibrance'
+                  ? (inst.params as { vibrance: number }).vibrance
+                  : type === 'hue'
+                  ? (inst.params as { hue: number }).hue
+                  : (inst.params as { value: number }).value;
+                const label = TRANSFORM_LABELS[type];
+                const formattedNow = formatValueFor(
+                  inst.kind,
+                  type === 'vibrance'
+                    ? { vibrance: currentValue }
+                    : type === 'hue'
+                    ? { hue: currentValue }
+                    : { value: currentValue }
+                );
+                return (
+                  <DraggableSliderCard
+                    key={inst.id}
+                    id={inst.id}
+                    index={index}
+                    kind={inst.kind}
+                    enabled={inst.enabled}
+                    value={currentValue}
+                    onChange={(v) => props.onChangeInstanceParams?.(inst.id, inst.kind, v)}
+                    min={config.min}
+                    max={config.max}
+                    step={config.step}
+                    defaultValue={config.defaultValue}
+                    formatValue={() => formattedNow}
+                    icon={getIcon(type)}
+                    label={label}
+                    onDelete={props.onDeleteInstance}
+                    onToggleEnabled={props.onToggleInstance}
+                    onClick={onCardClick}
+                    isActive={activeTab === type}
+                  />
+                );
+              })}
+            </div>
+          </SortableContext>
+        ) : (
+          <SortableContext items={transformOrder} strategy={verticalListSortingStrategy}>
+            <div className="space-y-3">
+              {transformOrder.map((type, index) => {
+                const config = getTransformConfig(type);
+                const value = getValue(type, rest);
+                const onChange = getOnChange(type, rest);
+                return (
+                  <DraggableSliderCard
+                    key={type}
+                    id={type}
+                    index={index}
+                    kind={type}
+                    value={value}
+                    onChange={onChange}
+                    min={config.min}
+                    max={config.max}
+                    step={config.step}
+                    defaultValue={config.defaultValue}
+                    formatValue={config.formatValue}
+                    icon={getIcon(type)}
+                    label={TRANSFORM_LABELS[type]}
+                    onClick={onCardClick}
+                    isActive={activeTab === type}
+                  />
+                );
+              })}
+            </div>
+          </SortableContext>
+        )}
       </DndContext>
 
       <Button

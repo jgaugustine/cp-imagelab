@@ -1,5 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
-import { TransformationType, RGB } from "@/types/transformations";
+import { TransformationType, RGB, FilterKind } from "@/types/transformations";
 
 interface PixelInspectorProps {
   x: number;
@@ -8,6 +8,9 @@ interface PixelInspectorProps {
   transformedRGB: RGB;
   stepByStep: Record<TransformationType, RGB>;
   transformOrder: TransformationType[];
+  // New optional step array for instance-based pipeline
+  steps?: { id: string; kind: FilterKind; inputRGB: RGB; outputRGB: RGB }[];
+  onSelectInstance?: (id: string) => void;
   brightness: number;
   contrast: number;
   saturation: number;
@@ -25,6 +28,8 @@ export function PixelInspector({
   transformedRGB,
   stepByStep,
   transformOrder,
+  steps,
+  onSelectInstance,
   brightness,
   contrast,
   saturation,
@@ -184,30 +189,47 @@ export function PixelInspector({
           {/* Step-by-step transformations - DYNAMIC */}
           <div className="space-y-2 border-t border-border pt-2">
             <div className="text-xs font-medium text-foreground">Transformation Steps</div>
-            
-            {transformOrder.map((transformType, index) => {
-              if (!shouldShowStep(transformType)) return null;
-              
-              const stepRGB = stepByStep[transformType];
-              
-              return (
-                <div key={transformType} className="space-y-1">
-                  <div className="text-xs text-primary">
-                    {index + 1}. {getTransformLabel(transformType)} ({getTransformValue(transformType)})
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div
-                      className="w-6 h-6 rounded border border-border"
-                      style={{ backgroundColor: rgbToHex(stepRGB.r, stepRGB.g, stepRGB.b) }}
-                    />
-                    <div className="text-xs font-mono text-muted-foreground">
-                      {formatRGB(stepRGB)}
+            {Array.isArray(steps) && steps.length > 0 ? (
+              <div className="space-y-1">
+                {steps.map((s, idx) => (
+                  <div key={s.id} className="space-y-1">
+                    <div className="text-xs text-primary cursor-pointer" onClick={() => onSelectInstance?.(s.id)}>
+                      {idx + 1}. {getTransformLabel(s.kind as TransformationType)}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-6 h-6 rounded border border-border"
+                        style={{ backgroundColor: rgbToHex(s.outputRGB.r, s.outputRGB.g, s.outputRGB.b) }}
+                      />
+                      <div className="text-xs font-mono text-muted-foreground">
+                        {formatRGB(s.outputRGB)}
+                      </div>
                     </div>
                   </div>
-                  {/* Gray/Y readout intentionally omitted per requirements */}
-                </div>
-              );
-            })}
+                ))}
+              </div>
+            ) : (
+              transformOrder.map((transformType, index) => {
+                if (!shouldShowStep(transformType)) return null;
+                const stepRGB = stepByStep[transformType];
+                return (
+                  <div key={transformType} className="space-y-1">
+                    <div className="text-xs text-primary">
+                      {index + 1}. {getTransformLabel(transformType)} ({getTransformValue(transformType)})
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-6 h-6 rounded border border-border"
+                        style={{ backgroundColor: rgbToHex(stepRGB.r, stepRGB.g, stepRGB.b) }}
+                      />
+                      <div className="text-xs font-mono text-muted-foreground">
+                        {formatRGB(stepRGB)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
 
           {/* Final Transformed Color */}
@@ -215,7 +237,7 @@ export function PixelInspector({
             <div className="text-xs font-medium text-foreground">
               Final Transformed RGB
               <span className="text-muted-foreground ml-1">
-                (After Step {transformOrder.filter((t, idx) => shouldShowStep(t)).length || transformOrder.length})
+                (After Step {Array.isArray(steps) && steps.length > 0 ? steps.length : (transformOrder.filter((t) => shouldShowStep(t)).length || transformOrder.length)})
               </span>
             </div>
             <div className="flex items-center gap-2">

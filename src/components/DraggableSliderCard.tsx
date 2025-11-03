@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, Trash2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
-import { TransformationType } from '@/types/transformations';
+import { FilterKind, TransformationType } from '@/types/transformations';
+import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 
 interface DraggableSliderCardProps {
-  id: TransformationType;
+  id: string | TransformationType;
   index: number;
+  kind: FilterKind | TransformationType;
+  enabled?: boolean;
   value: number;
   onChange: (value: number) => void;
   min: number;
@@ -18,6 +22,8 @@ interface DraggableSliderCardProps {
   formatValue: (value: number) => string;
   icon: React.ReactNode;
   label: string;
+  onDelete?: (id: string) => void;
+  onToggleEnabled?: (id: string) => void;
   onClick?: (transformType: TransformationType) => void;
   isActive?: boolean;
 }
@@ -25,6 +31,8 @@ interface DraggableSliderCardProps {
 export function DraggableSliderCard({
   id,
   index,
+  kind,
+  enabled = true,
   value,
   onChange,
   min,
@@ -34,6 +42,8 @@ export function DraggableSliderCard({
   formatValue,
   icon,
   label,
+  onDelete,
+  onToggleEnabled,
   onClick,
   isActive,
 }: DraggableSliderCardProps) {
@@ -61,7 +71,7 @@ export function DraggableSliderCard({
 
   const handleClick = () => {
     if (onClick && !isDragging) {
-      onClick(id);
+      onClick(kind as TransformationType);
     }
   };
 
@@ -129,6 +139,21 @@ export function DraggableSliderCard({
               thumbHighlight={recentlyChanged}
               onDoubleClick={() => onChange(defaultValue)}
             />
+          </div>
+        </div>
+
+        {/* Instance controls */}
+        <div className="flex flex-col items-end gap-2 pt-1">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={enabled}
+              onCheckedChange={() => onToggleEnabled?.(String(id))}
+              onClick={(e) => e.stopPropagation()}
+              className="scale-75 origin-right"
+            />
+            <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); onDelete?.(String(id)); }} aria-label="Delete">
+              <Trash2 className="w-4 h-4" />
+            </Button>
           </div>
         </div>
       </div>

@@ -7,7 +7,25 @@ import { MathExplanation } from "@/components/MathExplanation";
 import { TransformationType, RGB } from "@/types/transformations";
 import { TransformationSliders } from "@/components/TransformationSliders";
 import { downsizeImageToDataURL } from "@/lib/imageResize";
-export default function Index() {
+import { FilterInstance } from "@/types/transformations";
+
+interface IndexProps {
+  // Instance-based pipeline (introduced at App level)
+  pipeline?: FilterInstance[];
+  setPipeline?: (next: FilterInstance[] | ((prev: FilterInstance[]) => FilterInstance[])) => void;
+  selectedInstanceId?: string | null;
+  setSelectedInstanceId?: (id: string | null) => void;
+  pipelineApi?: {
+    addInstance: (kind: TransformationType) => void;
+    duplicateInstance: (id: string) => void;
+    deleteInstance: (id: string) => void;
+    toggleInstance: (id: string) => void;
+    reorderInstances: (activeId: string, overId: string) => void;
+    updateInstanceParams: (id: string, updater: (prev: FilterInstance) => FilterInstance) => void;
+  };
+}
+
+export default function Index(_props: IndexProps) {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [brightness, setBrightness] = useState(0);
   const [contrast, setContrast] = useState(1);
@@ -98,7 +116,7 @@ export default function Index() {
                     </Button>
                     <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                   </div>
-                </div> : <div className="aspect-video w-full overflow-hidden"><CanvasAny image={image} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} linearSaturation={linearSaturation} vibrance={vibrance} transformOrder={transformOrder} onPixelSelect={setSelectedRGB} previewOriginal={previewOriginal} /></div>}
+                </div> : <div className="aspect-video w-full overflow-hidden"><CanvasAny image={image} pipeline={_props.pipeline} onSelectInstance={_props.setSelectedInstanceId} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} linearSaturation={linearSaturation} vibrance={vibrance} transformOrder={transformOrder} onPixelSelect={setSelectedRGB} previewOriginal={previewOriginal} /></div>}
             </Card>
 
             <Card className="p-6 border-border bg-card">
@@ -107,6 +125,20 @@ export default function Index() {
               <TransformationSliders
                 transformOrder={transformOrder}
                 onOrderChange={setTransformOrder}
+                pipeline={_props.pipeline}
+                onReorderInstances={_props.pipelineApi?.reorderInstances}
+                onAddInstance={_props.pipelineApi?.addInstance}
+                onDuplicateInstance={_props.pipelineApi?.duplicateInstance}
+                onDeleteInstance={_props.pipelineApi?.deleteInstance}
+                onToggleInstance={_props.pipelineApi?.toggleInstance}
+                onChangeInstanceParams={(id, kind, nextValue) => {
+                  _props.pipelineApi?.updateInstanceParams?.(id, (prev) => {
+                    if (kind === 'vibrance') return { ...prev, params: { vibrance: nextValue } };
+                    if (kind === 'hue') return { ...prev, params: { hue: nextValue } };
+                    return { ...prev, params: { value: nextValue } };
+                  });
+                  return;
+                }}
                 brightness={brightness}
                 setBrightness={setBrightness}
                 contrast={contrast}
@@ -143,6 +175,8 @@ export default function Index() {
               onToggleLinearSaturation={setLinearSaturation}
               selectedRGB={selectedRGB || undefined}
               transformOrder={transformOrder}
+              pipeline={_props.pipeline}
+              selectedInstanceId={_props.selectedInstanceId ?? null}
               hasImage={!!image}
               activeTab={activeTab}
             />

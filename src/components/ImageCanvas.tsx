@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { PixelInspector } from "./PixelInspector";
-import { TransformationType, RGB } from "@/types/transformations";
+import { TransformationType, RGB, FilterInstance, FilterKind } from "@/types/transformations";
 
 interface ImageCanvasProps {
   image: HTMLImageElement;
+  // New instance-based pipeline (optional until full refactor)
+  pipeline?: FilterInstance[];
+  onSelectInstance?: (id: string) => void;
   brightness: number;
   contrast: number;
   saturation: number;
@@ -30,6 +33,7 @@ interface InspectorData {
   transformOrder: TransformationType[];
   cursorX: number;
   cursorY: number;
+  steps?: { id: string; kind: FilterKind; inputRGB: RGB; outputRGB: RGB }[];
 }
 
 const clamp = (val: number): number => Math.max(0, Math.min(255, val));
@@ -337,7 +341,7 @@ const applyHue = (rgb: RGB, value: number): RGB => {
   return applyMatrix(rgb, matrix);
 };
 
-export function ImageCanvas({ image, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true, onPixelSelect, previewOriginal = false }: ImageCanvasProps) {
+export function ImageCanvas({ image, pipeline, onSelectInstance, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true, onPixelSelect, previewOriginal = false }: ImageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [inspectorData, setInspectorData] = useState<InspectorData | null>(null);
   const originalImageDataRef = useRef<ImageData | null>(null);
@@ -393,85 +397,63 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
       return;
     }
 
+    // Build sequence of steps including values: prefer pipeline instances when provided
+    type Step = { type: TransformationType; value: number } | { type: 'vibrance'; value: number };
+    const steps: Step[] = pipeline
+      ? pipeline.filter(p => p.enabled).map(p => {
+          if (p.kind === 'vibrance') return { type: 'vibrance', value: (p.params as { vibrance: number }).vibrance } as Step;
+          if (p.kind === 'hue') return { type: 'hue', value: (p.params as { hue: number }).hue } as Step;
+          return { type: p.kind as Exclude<TransformationType, 'vibrance' | 'hue'>, value: (p.params as { value: number }).value } as Step;
+        })
+      : (transformOrder.map(t => ({ type: t, value: getTransformValue(t) })) as Step[]);
+
     // Process transformations sequentially, batching consecutive matrix-compatible transforms
-    // This maintains correct order when matrix and per-pixel transforms are interleaved
     let i = 0;
-    while (i < transformOrder.length) {
-      // Check if this and following transforms are matrix-compatible
-      const matrixBatch: Array<{ matrix: number[]; offset: number[] }> = [];
+    while (i < steps.length) {
+      const matrixBatch: Array<{ matrix: number[]; offset: number[] } > = [];
       let batchEnd = i;
-      
-      while (batchEnd < transformOrder.length) {
-        const batchType = transformOrder[batchEnd];
-        const batchValue = getTransformValue(batchType);
-        
-        // Check if this transform can use matrix operations
-        const isPerPixel = batchType === 'vibrance' || (batchType === 'saturation' && linearSaturation);
-        
-        if (isPerPixel) {
-          // Stop batching when we hit a per-pixel transform
-          break;
-        }
-        
-        // Build matrix for this transform
-        if (batchType === 'brightness') {
-          matrixBatch.push(buildBrightnessMatrix(batchValue));
-        } else if (batchType === 'contrast') {
-          matrixBatch.push(buildContrastMatrix(batchValue));
-        } else if (batchType === 'saturation') {
-          // Gamma saturation uses matrix
-          const satMatrix = buildSaturationMatrix(batchValue);
-          matrixBatch.push({ matrix: satMatrix, offset: [0, 0, 0] });
-        } else if (batchType === 'hue') {
-          const hueMatrix = buildHueMatrix(batchValue);
-          matrixBatch.push({ matrix: hueMatrix, offset: [0, 0, 0] });
-        }
-        
+
+      while (batchEnd < steps.length) {
+        const s = steps[batchEnd];
+        const stype = s.type as TransformationType;
+        const sval = (s as any).value as number;
+        const isPerPixel = stype === 'vibrance' || (stype === 'saturation' && linearSaturation);
+        if (isPerPixel) break;
+        if (stype === 'brightness') matrixBatch.push(buildBrightnessMatrix(sval));
+        else if (stype === 'contrast') matrixBatch.push(buildContrastMatrix(sval));
+        else if (stype === 'saturation') matrixBatch.push({ matrix: buildSaturationMatrix(sval), offset: [0,0,0] });
+        else if (stype === 'hue') matrixBatch.push({ matrix: buildHueMatrix(sval), offset: [0,0,0] });
         batchEnd++;
       }
-      
-      // Apply batched matrix transforms if any
+
       if (matrixBatch.length > 0) {
         const composed = composeAffineTransforms(matrixBatch);
         applyMatrixToImageData(imageData, composed.matrix, composed.offset);
         i = batchEnd;
       } else {
-        // Apply per-pixel transform
-        const perPixelType = transformOrder[i];
-        const perPixelValue = getTransformValue(perPixelType);
-        
+        const s = steps[i];
+        const stype = s.type as TransformationType;
+        const sval = (s as any).value as number;
         for (let j = 0; j < data.length; j += 4) {
           const alpha = data[j + 3];
           if (alpha === 0) continue;
-          
-          const rgb: RGB = {
-            r: data[j],
-            g: data[j + 1],
-            b: data[j + 2]
-          };
-          
-          let transformed: RGB;
-          if (perPixelType === 'vibrance') {
-            transformed = linearSaturation
-              ? applyVibranceLinear(rgb, vibrance ?? 0)
-              : applyVibrance(rgb, vibrance ?? 0);
-          } else if (perPixelType === 'saturation') {
-            transformed = applySaturationLinear(rgb, perPixelValue);
-          } else {
-            transformed = rgb; // Shouldn't happen
+          const rgb: RGB = { r: data[j], g: data[j+1], b: data[j+2] };
+          let transformed: RGB = rgb;
+          if (stype === 'vibrance') {
+            transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
+          } else if (stype === 'saturation') {
+            transformed = applySaturationLinear(rgb, sval);
           }
-          
           data[j] = transformed.r;
-          data[j + 1] = transformed.g;
-          data[j + 2] = transformed.b;
+          data[j+1] = transformed.g;
+          data[j+2] = transformed.b;
         }
-        
         i++;
       }
     }
 
     ctx.putImageData(imageData, 0, 0);
-  }, [image, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder, previewOriginal]);
+  }, [image, pipeline, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder, previewOriginal]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!enableInspector) return;
@@ -534,13 +516,45 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
       b: originalData[index + 2],
     };
 
-    // Calculate step-by-step transformations in current order
+    // Calculate step-by-step transformations.
+    // Legacy map for existing UI:
     const stepByStep: Record<TransformationType, RGB> = {} as Record<TransformationType, RGB>;
     let rgb = originalRGB;
-
-    for (const transformType of transformOrder) {
+    const activeOrder = pipeline ? (pipeline.filter(p => p.enabled).map(p => p.kind as TransformationType)) : transformOrder;
+    for (const transformType of activeOrder) {
       rgb = applyTransformation(rgb, transformType);
-      stepByStep[transformType] = { ...rgb };  // Store clamped result
+      stepByStep[transformType] = { ...rgb };
+    }
+
+    // New steps array for instance-based pipeline
+    let steps: { id: string; kind: FilterKind; inputRGB: RGB; outputRGB: RGB }[] | undefined = undefined;
+    if (pipeline) {
+      steps = [];
+      let color = originalRGB;
+      for (const inst of pipeline) {
+        if (!inst.enabled) continue;
+        const inputRGB = color;
+        let output: RGB = inputRGB;
+        if (inst.kind === 'brightness') {
+          const v = (inst.params as { value: number }).value;
+          output = applyBrightness(inputRGB, v);
+        } else if (inst.kind === 'contrast') {
+          const v = (inst.params as { value: number }).value;
+          output = applyContrast(inputRGB, v);
+        } else if (inst.kind === 'saturation') {
+          const v = (inst.params as { value: number }).value;
+          output = linearSaturation ? applySaturationLinear(inputRGB, v) : applySaturation(inputRGB, v);
+        } else if (inst.kind === 'vibrance') {
+          const v = (inst.params as { vibrance: number }).vibrance;
+          output = linearSaturation ? applyVibranceLinear(inputRGB, v) : applyVibrance(inputRGB, v);
+        } else if (inst.kind === 'hue') {
+          const deg = (inst.params as { hue: number }).hue;
+          output = applyHue(inputRGB, deg);
+        }
+        steps.push({ id: inst.id, kind: inst.kind, inputRGB, outputRGB: output });
+        color = output;
+      }
+      rgb = color;
     }
 
     setInspectorData({
@@ -549,9 +563,10 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
       originalRGB,
       transformedRGB: rgb,  // Final is already clamped
       stepByStep,
-      transformOrder,
+      transformOrder: activeOrder,
       cursorX: e.clientX,
-      cursorY: e.clientY
+      cursorY: e.clientY,
+      steps
     });
   };
 
@@ -622,6 +637,8 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
       {enableInspector && inspectorData && (
         <PixelInspector
           {...inspectorData}
+          steps={inspectorData.steps}
+          onSelectInstance={onSelectInstance}
           brightness={brightness}
           contrast={contrast}
           saturation={saturation}

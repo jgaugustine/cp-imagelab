@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui/card";
 import RGBCubeVisualizer from "@/components/RGBCubeVisualizer";
+import { FilterInstance, TransformationType } from "@/types/transformations";
 // Tabs removed; we render sections conditionally based on activeTab
 import { useEffect, useRef, useState, useMemo } from "react";
 
@@ -16,13 +17,16 @@ interface MathExplanationProps {
   lastChange?: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue';
   // Optional pipeline order for All Changes
   transformOrder?: ('brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue')[];
+  // Instance-based pipeline support
+  pipeline?: FilterInstance[];
+  selectedInstanceId?: string | null;
   // Image upload state
   hasImage?: boolean;
   // Which explanation section to show
   activeTab?: string;
 }
 
-export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, hasImage, activeTab }: MathExplanationProps) {
+export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, pipeline, selectedInstanceId, hasImage, activeTab }: MathExplanationProps) {
   const [localLastChange, setLocalLastChange] = useState<'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | undefined>(undefined);
   const prevRef = useRef({ brightness, contrast, saturation, vibrance, hue });
 
@@ -38,13 +42,44 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
   const effectiveLastChange = lastChange ?? localLastChange;
 
+  // When using instance-based pipeline, prefer the selected instance's value
+  const resolveFromPipeline = useMemo(() => {
+    if (!pipeline || pipeline.length === 0) return {} as Record<string, number | undefined>;
+    const byKind = (kind: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue'): number | undefined => {
+      const selected = selectedInstanceId ? pipeline.find(p => p.id === selectedInstanceId && p.kind === kind) : undefined;
+      const inst = selected ?? pipeline.find(p => p.kind === kind && p.enabled);
+      if (!inst) return undefined;
+      if (kind === 'vibrance') return (inst.params as { vibrance: number }).vibrance;
+      if (kind === 'hue') return (inst.params as { hue: number }).hue;
+      return (inst.params as { value: number }).value;
+    };
+    return {
+      brightness: byKind('brightness'),
+      contrast: byKind('contrast'),
+      saturation: byKind('saturation'),
+      vibrance: byKind('vibrance'),
+      hue: byKind('hue'),
+    } as Record<string, number | undefined>;
+  }, [pipeline, selectedInstanceId]);
+
+  const effBrightness = resolveFromPipeline.brightness ?? brightness;
+  const effContrast = resolveFromPipeline.contrast ?? contrast;
+  const effSaturation = resolveFromPipeline.saturation ?? saturation;
+  const effVibrance = resolveFromPipeline.vibrance ?? vibrance;
+  const effHue = resolveFromPipeline.hue ?? hue;
+
   // Memoize params objects to prevent unnecessary RGBCubeVisualizer recalculations
-  const brightnessParams = useMemo(() => ({ brightness }), [brightness]);
-  const contrastParams = useMemo(() => ({ contrast }), [contrast]);
-  const saturationParams = useMemo(() => ({ saturation, linearSaturation }), [saturation, linearSaturation]);
-  const vibranceParams = useMemo(() => ({ vibrance, linearSaturation }), [vibrance, linearSaturation]);
-  const hueParams = useMemo(() => ({ hue }), [hue]);
-  const allParams = useMemo(() => ({ brightness, contrast, saturation, vibrance, hue, linearSaturation }), [brightness, contrast, saturation, vibrance, hue, linearSaturation]);
+  const brightnessParams = useMemo(() => ({ brightness: effBrightness }), [effBrightness]);
+  const contrastParams = useMemo(() => ({ contrast: effContrast }), [effContrast]);
+  const saturationParams = useMemo(() => ({ saturation: effSaturation, linearSaturation }), [effSaturation, linearSaturation]);
+  const vibranceParams = useMemo(() => ({ vibrance: effVibrance, linearSaturation }), [effVibrance, linearSaturation]);
+  const hueParams = useMemo(() => ({ hue: effHue }), [effHue]);
+  const allParams = useMemo(() => ({ brightness: effBrightness, contrast: effContrast, saturation: effSaturation, vibrance: effVibrance, hue: effHue, linearSaturation }), [effBrightness, effContrast, effSaturation, effVibrance, effHue, linearSaturation]);
+  const effectiveOrder: TransformationType[] | undefined = useMemo(() => {
+    if (!pipeline) return transformOrder as TransformationType[] | undefined;
+    return pipeline.filter(p => p.enabled).map(p => p.kind as TransformationType);
+  }, [pipeline, transformOrder]);
+  const selectedId = selectedInstanceId ?? undefined;
 
   return (
     <Card className="p-6 border-border bg-card h-fit">
@@ -559,7 +594,16 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           </div>
           <Card className="p-4 border-border bg-card">
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: All vector-based transforms</h4>
-            <RGBCubeVisualizer mode="all" params={allParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} transformOrder={transformOrder} hasImage={hasImage} />
+            <RGBCubeVisualizer
+              mode="all"
+              params={allParams}
+              selectedRGB={selectedRGB}
+              lastChange={effectiveLastChange}
+              transformOrder={effectiveOrder}
+              hasImage={hasImage}
+              pipeline={pipeline}
+              selectedInstanceId={selectedId}
+            />
           </Card>
         </div>
         )}

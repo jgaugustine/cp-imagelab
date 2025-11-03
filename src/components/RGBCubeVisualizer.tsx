@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
-import { TransformationType } from "@/types/transformations";
+import { FilterInstance, TransformationType } from "@/types/transformations";
 
 type Mode = 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | 'all';
 
@@ -21,6 +21,9 @@ interface RGBCubeVisualizerProps {
   transformOrder?: TransformationType[];
   // Image upload state
   hasImage?: boolean;
+  // Optional instance-based pipeline visualization
+  pipeline?: FilterInstance[];
+  selectedInstanceId?: string;
 }
 
 const clamp = (v: number, min = 0, max = 255) => Math.max(min, Math.min(max, v));
@@ -109,7 +112,7 @@ function drawArrow(
   ctx.fill();
 }
 
-export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllChanges, lastChange, transformOrder, hasImage }: RGBCubeVisualizerProps) {
+export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllChanges, lastChange, transformOrder, hasImage, pipeline, selectedInstanceId }: RGBCubeVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState<number>(-35);
   const [pitch, setPitch] = useState<number>(20);
@@ -184,13 +187,74 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
   }
 
   function computePipelineTransformed(original: { r: number; g: number; b: number }) {
-    // Use provided order if available; otherwise default
+    // If we have a pipeline with instance params, use it for accuracy
+    if (pipeline && pipeline.length > 0) {
+      let rgb = { ...original };
+      for (const inst of pipeline) {
+        if (!inst.enabled) continue;
+        rgb = computeInstanceStep(rgb, inst);
+      }
+      return rgb;
+    }
+    // Otherwise use the legacy param-based order
     const order: Exclude<Mode, 'all'>[] = (transformOrder ?? ['brightness','contrast','saturation','vibrance','hue']) as Exclude<Mode,'all'>[];
     let rgb = { ...original };
     for (const step of order) {
       rgb = computeTransformedFor(rgb, step);
     }
     return rgb;
+  }
+
+  function computeInstanceStep(original: { r: number; g: number; b: number }, inst: FilterInstance) {
+    const linear = params.linearSaturation ?? false;
+    if (inst.kind === 'brightness') {
+      const v = (inst.params as { value: number }).value;
+      return { r: clamp(original.r + v), g: clamp(original.g + v), b: clamp(original.b + v) };
+    }
+    if (inst.kind === 'contrast') {
+      const v = (inst.params as { value: number }).value;
+      return { r: clamp((original.r - 128) * v + 128), g: clamp((original.g - 128) * v + 128), b: clamp((original.b - 128) * v + 128) };
+    }
+    if (inst.kind === 'saturation') {
+      const s = (inst.params as { value: number }).value;
+      if (!linear) {
+        const wR = 0.299, wG = 0.587, wB = 0.114;
+        const gray = wR * original.r + wG * original.g + wB * original.b;
+        return { r: clamp(gray + (original.r - gray) * s), g: clamp(gray + (original.g - gray) * s), b: clamp(gray + (original.b - gray) * s) };
+      } else {
+        const rl = toLinear(original.r), gl = toLinear(original.g), bl = toLinear(original.b);
+        const wR = 0.2126, wG = 0.7152, wB = 0.0722;
+        const Y = wR * rl + wG * gl + wB * bl;
+        const rlinP = Y + (rl - Y) * s;
+        const glinP = Y + (gl - Y) * s;
+        const blinP = Y + (bl - Y) * s;
+        return { r: clamp(toSRGB(rlinP) * 255), g: clamp(toSRGB(glinP) * 255), b: clamp(toSRGB(blinP) * 255) };
+      }
+    }
+    if (inst.kind === 'vibrance') {
+      const V = (inst.params as { vibrance: number }).vibrance;
+      const R = original.r, G = original.g, B = original.b;
+      const toLinLocal = (c: number) => {
+        const x = c / 255;
+        return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+      };
+      const Rm = (params.linearSaturation ?? false) ? toLinLocal(R) : R;
+      const Gm = (params.linearSaturation ?? false) ? toLinLocal(G) : G;
+      const Bm = (params.linearSaturation ?? false) ? toLinLocal(B) : B;
+      const maxC = Math.max(Rm, Gm, Bm);
+      const minC = Math.min(Rm, Gm, Bm);
+      const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
+      const f = 1 + V * (1 - sEst);
+      const wR = (params.linearSaturation ?? false) ? 0.2126 : 0.299;
+      const wG = (params.linearSaturation ?? false) ? 0.7152 : 0.587;
+      const wB = (params.linearSaturation ?? false) ? 0.0722 : 0.114;
+      const gray = wR * R + wG * G + wB * B;
+      return { r: clamp(gray + (R - gray) * f), g: clamp(gray + (G - gray) * f), b: clamp(gray + (B - gray) * f) };
+    }
+    // hue
+    const deg = (inst.params as { hue: number }).hue;
+    const M = buildHueRotationMatrix(deg);
+    return multiplyRGB(M, original.r, original.g, original.b);
   }
 
   function computePipelineWithParams(customParams: typeof params, start: { r: number; g: number; b: number }) {
@@ -327,9 +391,25 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
       }
     }
 
-    // Auxiliary depiction: draw relative to the last changed transform, showing its effect from the cumulative state before it was changed
+    // Auxiliary depiction
     ctx.strokeStyle = auxColor;
-    if (lastChange) {
+    if (mode === 'all' && pipeline && selectedInstanceId) {
+      const idx = pipeline.findIndex(p => p.id === selectedInstanceId);
+      if (idx !== -1) {
+        // Compute color before the selected instance
+        let before = original;
+        for (let i = 0; i < idx; i++) {
+          const inst = pipeline[i];
+          if (!inst.enabled) continue;
+          before = computeInstanceStep(before, inst);
+        }
+        // After applying ONLY the selected instance
+        const after = computeInstanceStep(before, pipeline[idx]);
+        const pBefore = rp(before.r, before.g, before.b);
+        const pAfter = rp(after.r, after.g, after.b);
+        drawArrow(ctx, pBefore, pAfter, auxColor, 2, 8);
+      }
+    } else if (lastChange) {
       const step = lastChange as Exclude<Mode,'all'>;
       // Compute the state before the last change: full pipeline with previous value for lastChange, current for all others
       const prevParams = prevParamsRef.current;
@@ -414,7 +494,7 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
     // Update previous params snapshot after rendering
     prevParamsRef.current = { ...params };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, paramsBrightness, paramsContrast, paramsSaturation, paramsVibrance, paramsHue, paramsLinearSaturation, selectedRGB, yaw, pitch, zoom, showAllChanges, lastChange, transformOrder, hasImage]);
+  }, [mode, paramsBrightness, paramsContrast, paramsSaturation, paramsVibrance, paramsHue, paramsLinearSaturation, selectedRGB, yaw, pitch, zoom, showAllChanges, lastChange, transformOrder, hasImage, pipeline, selectedInstanceId]);
 
   useEffect(() => {
     // Only set up event listeners when we have an image (canvas exists)
