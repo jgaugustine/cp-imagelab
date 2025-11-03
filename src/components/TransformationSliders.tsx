@@ -187,7 +187,15 @@ export function TransformationSliders(props: TransformationSlidersProps) {
               {props.pipeline.map((inst, index) => {
                 const kind = inst.kind;
                 const isVector: boolean = (kind === 'brightness' || kind === 'contrast' || kind === 'saturation' || kind === 'vibrance' || kind === 'hue');
-                const config = isVector ? getTransformConfig(kind as TransformationType) : { min: 0, max: 10, step: 0.1, defaultValue: 1, formatValue: (v: number) => `${v}` };
+                const config = isVector ? getTransformConfig(kind as TransformationType) : (
+                  kind === 'blur'
+                    ? { min: 0, max: 10, step: 0.1, defaultValue: 1, formatValue: (v: number) => `${v.toFixed(1)}` }
+                    : kind === 'sharpen'
+                    ? { min: 0, max: 5, step: 0.1, defaultValue: 1, formatValue: (v: number) => `${v.toFixed(1)}` }
+                    : kind === 'edge'
+                    ? { min: 3, max: 5, step: 2, defaultValue: 3, formatValue: (v: number) => `${v}×${v}` }
+                    : /* denoise */ { min: 3, max: 7, step: 2, defaultValue: 3, formatValue: (v: number) => `${v}×${v}` }
+                );
                 const currentValue = kind === 'vibrance'
                   ? (inst.params as { vibrance: number }).vibrance
                   : kind === 'hue'

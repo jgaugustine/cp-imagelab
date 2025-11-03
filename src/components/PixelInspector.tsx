@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { TransformationType, RGB, FilterKind } from "@/types/transformations";
-import KernelGrid from "@/components/Convolution/KernelGrid";
+import KernelGrid, { KernelPreview } from "@/components/Convolution/KernelGrid";
 
 interface PixelInspectorProps {
   x: number;
@@ -268,6 +268,36 @@ export function PixelInspector({
                 </div>
               )}
               <div className="text-[10px] text-muted-foreground">Padding: {activeConv.padding}</div>
+              {/* Resulting pixel from the active convolution step */}
+              {Array.isArray(steps) && steps.length > 0 && (() => {
+                const convKinds = new Set(['blur','sharpen','edge','denoise']);
+                const convStep = [...steps].reverse().find(s => convKinds.has(s.kind as any));
+                if (!convStep) return null;
+                const rgb = convStep.outputRGB;
+                const rgbHex = `#${[rgb.r, rgb.g, rgb.b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+                return (
+                  <div className="mt-2 space-y-1">
+                    <div className="text-xs font-semibold text-primary">Result</div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-5 h-5 rounded border border-border" style={{ backgroundColor: rgbHex }} />
+                      <div className="text-xs font-mono text-muted-foreground">({Math.round(rgb.r)}, {Math.round(rgb.g)}, {Math.round(rgb.b)})</div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Grayscale image of kernel */}
+              {activeConv.kernel && (
+                <div className="mt-2">
+                  <KernelPreview kernel={activeConv.kernel} title="Kernel (grayscale)" />
+                </div>
+              )}
+              {activeConv.edgeKernels && (
+                <div className="mt-2 flex gap-2">
+                  <KernelPreview kernel={activeConv.edgeKernels.kx} title="X (grayscale)" />
+                  <KernelPreview kernel={activeConv.edgeKernels.ky} title="Y (grayscale)" />
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
