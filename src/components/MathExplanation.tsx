@@ -54,9 +54,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           <h2 className="text-xl font-semibold text-primary">Mathematical Transformations</h2>
         </div>
 
-        <TabsContent value="brightness" className="space-y-4 mt-4" forceMount>
+        <TabsContent value="brightness" className="space-y-4 mt-4">
           <div className="space-y-2">
-            <div className="text-2xl font-bold text-primary">Brightness</div>
+            <div className="text-lg font-semibold text-foreground">Brightness</div>
             <h3 className="text-lg font-semibold text-muted-foreground">Matrix Addition</h3>
             <p className="text-sm text-muted-foreground">
               Brightness adjustment is a simple matrix addition operation applied uniformly to all RGB channels.
@@ -126,9 +126,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           </div>
         </TabsContent>
 
-        <TabsContent value="vibrance" className="space-y-4 mt-4" forceMount>
+        <TabsContent value="vibrance" className="space-y-4 mt-4">
           <div className="space-y-2">
-            <div className="text-2xl font-bold text-primary">Vibrance</div>
+            <div className="text-lg font-semibold text-foreground">Vibrance</div>
             <h3 className="text-lg font-semibold text-muted-foreground">Adaptive Color Adjustment</h3>
             <p className="text-sm text-muted-foreground">
               Vibrance adjusts saturation adaptively: positive values boost low‑chroma pixels more than high‑chroma ones; negative values reduce low‑chroma pixels more gently, preserving skin tones and avoiding clipping.
@@ -248,9 +248,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           
         </TabsContent>
 
-        <TabsContent value="contrast" className="space-y-4 mt-4" forceMount>
+        <TabsContent value="contrast" className="space-y-4 mt-4">
           <div className="space-y-2">
-            <div className="text-2xl font-bold text-primary">Contrast</div>
+            <div className="text-lg font-semibold text-foreground">Contrast</div>
             <h3 className="text-lg font-semibold text-muted-foreground">Scalar Multiplication</h3>
             <p className="text-sm text-muted-foreground">
               Contrast is achieved by scaling each color channel around the midpoint (128).
@@ -338,9 +338,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           
         </TabsContent>
 
-        <TabsContent value="saturation" className="space-y-4 mt-4" forceMount>
+        <TabsContent value="saturation" className="space-y-4 mt-4">
           <div className="space-y-2">
-            <div className="text-2xl font-bold text-primary">Saturation</div>
+            <div className="text-lg font-semibold text-foreground">Saturation</div>
             <h3 className="text-lg font-semibold text-muted-foreground">Color Space Transformation</h3>
             <p className="text-sm text-muted-foreground">
               Saturation adjusts color intensity by interpolating between the pixel color and a neutral gray for that pixel.
@@ -468,7 +468,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
         <TabsContent value="hue" className="space-y-4 mt-4" forceMount>
           <div className="space-y-2">
-            <div className="text-2xl font-bold text-primary">Hue</div>
+            <div className="text-lg font-semibold text-foreground">Hue</div>
             <h3 className="text-lg font-semibold text-muted-foreground">Rotation Matrix</h3>
             <p className="text-sm text-muted-foreground">
               Hue rotation is a 3D rotation in RGB color space around the gray axis.
@@ -549,7 +549,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
         <TabsContent value="all" className="space-y-4 mt-4" forceMount>
           <div className="space-y-2">
-            <div className="text-2xl font-bold text-primary">All Changes</div>
+            <div className="text-lg font-semibold text-foreground">All Changes</div>
             <h3 className="text-lg font-semibold text-muted-foreground">Visualize Composite Changes</h3>
             <p className="text-sm text-muted-foreground">Shows the original and full-pipeline transformed vectors, plus a guide for the most recently edited transform.</p>
           </div>
