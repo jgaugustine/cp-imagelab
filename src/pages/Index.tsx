@@ -1,12 +1,11 @@
 import { useState, useRef } from "react";
 import { Card } from "@/components/ui/card";
-import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { Upload } from "lucide-react";
 import { ImageCanvas } from "@/components/ImageCanvas";
 import { MathExplanation } from "@/components/MathExplanation";
 import { TransformationType, RGB } from "@/types/transformations";
-import { TransformationOrderControls } from "@/components/TransformationOrderControls";
+import { TransformationSliders } from "@/components/TransformationSliders";
 import { downsizeImageToDataURL } from "@/lib/imageResize";
 export default function Index() {
   const [image, setImage] = useState<HTMLImageElement | null>(null);
@@ -18,6 +17,7 @@ export default function Index() {
   const [linearSaturation, setLinearSaturation] = useState(false);
   const [transformOrder, setTransformOrder] = useState<TransformationType[]>(['brightness', 'contrast', 'saturation', 'vibrance', 'hue']);
   const [selectedRGB, setSelectedRGB] = useState<RGB | null>(null);
+  const [activeTab, setActiveTab] = useState<string>('brightness');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const CanvasAny = ImageCanvas as any;
   const MathAny = MathExplanation as any;
@@ -90,61 +90,34 @@ export default function Index() {
             <Card className="p-6 border-border bg-card">
               <h2 className="text-xl font-semibold text-primary mb-6">Transformation Controls</h2>
               
-              <div className="space-y-6">
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    Brightness: {brightness > 0 ? '+' : ''}{brightness}
-                  </label>
-                  <Slider value={[brightness]} onValueChange={([v]) => setBrightness(v)} min={-100} max={100} step={1} />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    Contrast: {contrast.toFixed(2)}x
-                  </label>
-                  <Slider value={[contrast]} onValueChange={([v]) => setContrast(v)} min={0} max={2} step={0.01} />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    Saturation: {saturation.toFixed(2)}x
-                  </label>
-                  <Slider value={[saturation]} onValueChange={([v]) => setSaturation(v)} min={0} max={2} step={0.01} />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    Vibrance: {vibrance >= 0 ? '+' : ''}{vibrance.toFixed(2)}
-                  </label>
-                  <Slider value={[vibrance]} onValueChange={([v]) => setVibrance(v)} min={-1} max={1} step={0.01} />
-                </div>
-
-
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    Hue Rotation: {hue > 0 ? '+' : ''}{hue}°
-                  </label>
-                  <Slider value={[hue]} onValueChange={([v]) => setHue(v)} min={-180} max={180} step={1} />
-                </div>
-
-                <Button variant="outline" className="w-full" onClick={() => {
-                setBrightness(0);
-                setContrast(1);
-                setSaturation(1);
-                setHue(0);
-                setVibrance(0);
-                setLinearSaturation(false);
-              }}>
-                  Reset All
-                </Button>
-              </div>
+              <TransformationSliders
+                transformOrder={transformOrder}
+                onOrderChange={setTransformOrder}
+                brightness={brightness}
+                setBrightness={setBrightness}
+                contrast={contrast}
+                setContrast={setContrast}
+                saturation={saturation}
+                setSaturation={setSaturation}
+                vibrance={vibrance}
+                setVibrance={setVibrance}
+                hue={hue}
+                setHue={setHue}
+                onResetAll={() => {
+                  setBrightness(0);
+                  setContrast(1);
+                  setSaturation(1);
+                  setHue(0);
+                  setVibrance(0);
+                  setLinearSaturation(false);
+                }}
+                onCardClick={(transformType) => setActiveTab(transformType)}
+              />
             </Card>
           </div>
 
-          {/* Right Panel - Pipeline Order & Mathematical Explanation */}
+          {/* Right Panel - Mathematical Explanation */}
           <div className="space-y-6">
-            <TransformationOrderControls order={transformOrder} onOrderChange={setTransformOrder} />
-            
             <MathAny
               brightness={brightness}
               contrast={contrast}
@@ -154,7 +127,10 @@ export default function Index() {
               linearSaturation={linearSaturation}
               onToggleLinearSaturation={setLinearSaturation}
               selectedRGB={selectedRGB || undefined}
+              transformOrder={transformOrder}
               hasImage={!!image}
+              activeTab={activeTab}
+              onActiveTabChange={setActiveTab}
             />
           </div>
         </div>

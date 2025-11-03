@@ -167,7 +167,7 @@ const applySaturation = (rgb: RGB, saturation: number): RGB => {
 
 const applySaturationLinear = (rgb: RGB, saturation: number): RGB => {
   if (saturation === 1) return rgb;
-  // Convert to linear-light
+  // Convert to linear-light space
   const rl = srgbToLinear(rgb.r);
   const gl = srgbToLinear(rgb.g);
   const bl = srgbToLinear(rgb.b);

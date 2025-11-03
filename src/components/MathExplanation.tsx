@@ -1,7 +1,6 @@
 import { Card } from "@/components/ui/card";
 import RGBCubeVisualizer from "@/components/RGBCubeVisualizer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TransformationOrderControls } from "@/components/TransformationOrderControls";
 import { useEffect, useRef, useState, useMemo } from "react";
 
 interface MathExplanationProps {
@@ -17,12 +16,14 @@ interface MathExplanationProps {
   lastChange?: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue';
   // Optional pipeline order for All Changes
   transformOrder?: ('brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue')[];
-  onTransformOrderChange?: (order: ('brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue')[]) => void;
   // Image upload state
   hasImage?: boolean;
+  // Controlled tab state
+  activeTab?: string;
+  onActiveTabChange?: (value: string) => void;
 }
 
-export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, onTransformOrderChange, hasImage }: MathExplanationProps) {
+export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, hasImage, activeTab, onActiveTabChange }: MathExplanationProps) {
   const [localLastChange, setLocalLastChange] = useState<'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | undefined>(undefined);
   const prevRef = useRef({ brightness, contrast, saturation, vibrance, hue });
 
@@ -48,31 +49,10 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
   return (
     <Card className="p-6 border-border bg-card h-fit">
-      <Tabs defaultValue="brightness" className="w-full">
-        <div className="flex items-center justify-between mb-4">
+      <Tabs value={activeTab} onValueChange={onActiveTabChange} className="w-full">
+        <div className="mb-4">
           <h2 className="text-xl font-semibold text-primary">Mathematical Transformations</h2>
-          <TabsList className="bg-transparent p-0">
-            <TabsTrigger
-              value="all"
-              className="rounded-md px-3 py-1 border border-sky-600 text-sky-600 hover:bg-sky-50/60 data-[state=active]:bg-sky-600 data-[state=active]:text-sky-50"
-            >
-              Visualize Composite Changes
-            </TabsTrigger>
-          </TabsList>
         </div>
-
-        {transformOrder && onTransformOrderChange && (
-          <div className="mb-4">
-            <TransformationOrderControls order={transformOrder} onOrderChange={onTransformOrderChange} />
-          </div>
-        )}
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
-          <TabsTrigger value="brightness">Brightness</TabsTrigger>
-          <TabsTrigger value="contrast">Contrast</TabsTrigger>
-          <TabsTrigger value="saturation">Saturation</TabsTrigger>
-          <TabsTrigger value="vibrance">Vibrance</TabsTrigger>
-          <TabsTrigger value="hue">Hue</TabsTrigger>
-        </TabsList>
 
         <TabsContent value="brightness" className="space-y-4 mt-4">
           <div className="space-y-2">
