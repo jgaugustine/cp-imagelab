@@ -1,5 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { TransformationType, RGB, FilterKind } from "@/types/transformations";
+import KernelGrid from "@/components/Convolution/KernelGrid";
 
 interface PixelInspectorProps {
   x: number;
@@ -19,6 +20,7 @@ interface PixelInspectorProps {
   cursorX: number;
   cursorY: number;
   linearSaturation?: boolean;
+  activeConv?: { kind: 'blur' | 'sharpen' | 'edge' | 'denoise'; kernel?: number[][]; edgeKernels?: { kx: number[][]; ky: number[][] }; padding: 'zero' | 'reflect' | 'edge' };
 }
 
 export function PixelInspector({
@@ -38,6 +40,7 @@ export function PixelInspector({
   cursorX,
   cursorY,
   linearSaturation = false,
+  activeConv,
 }: PixelInspectorProps) {
   const rgbToHex = (r: number, g: number, b: number) => {
     return `#${[r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
@@ -164,8 +167,9 @@ export function PixelInspector({
       className="fixed z-50 pointer-events-none"
       style={{ left: `${left}px`, top: `${top}px` }}
     >
-      <Card className="w-80 shadow-lg border-primary/20">
-        <CardContent className="p-4 space-y-3">
+      <div className="flex gap-3 items-start">
+        <Card className="w-80 shadow-lg border-primary/20">
+          <CardContent className="p-4 space-y-3">
           {/* Header */}
           <div className="border-b border-border pb-2">
             <h4 className="text-sm font-semibold text-primary">Pixel Inspector</h4>
@@ -250,8 +254,24 @@ export function PixelInspector({
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+        {activeConv && (
+          <Card className="shadow-lg border-primary/20">
+            <CardContent className="p-3 space-y-2">
+              <div className="text-xs font-semibold text-primary">Kernel</div>
+              {activeConv.kernel && <KernelGrid kernel={activeConv.kernel} />}
+              {!activeConv.kernel && activeConv.edgeKernels && (
+                <div className="flex gap-2">
+                  <KernelGrid kernel={activeConv.edgeKernels.kx} title="X" />
+                  <KernelGrid kernel={activeConv.edgeKernels.ky} title="Y" />
+                </div>
+              )}
+              <div className="text-[10px] text-muted-foreground">Padding: {activeConv.padding}</div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </div>
   );
 }

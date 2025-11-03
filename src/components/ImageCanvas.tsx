@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { PixelInspector } from "./PixelInspector";
-import { TransformationType, RGB, FilterInstance, FilterKind } from "@/types/transformations";
+import { TransformationType, RGB, FilterInstance, FilterKind, BlurParams, SharpenParams, EdgeParams, DenoiseParams } from "@/types/transformations";
+import { cpuConvolutionBackend } from "@/lib/convolutionBackend";
+import { convolveAtPixel, gaussianKernel, boxKernel, sobelKernels, prewittKernels, unsharpKernel } from "@/lib/convolution";
 
 interface ImageCanvasProps {
   image: HTMLImageElement;
@@ -34,6 +36,7 @@ interface InspectorData {
   cursorX: number;
   cursorY: number;
   steps?: { id: string; kind: FilterKind; inputRGB: RGB; outputRGB: RGB }[];
+  activeConv?: { kind: 'blur' | 'sharpen' | 'edge' | 'denoise'; kernel?: number[][]; edgeKernels?: { kx: number[][]; ky: number[][] }; padding: 'zero' | 'reflect' | 'edge' };
 }
 
 const clamp = (val: number): number => Math.max(0, Math.min(255, val));
@@ -397,58 +400,99 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, brightness, con
       return;
     }
 
-    // Build sequence of steps including values: prefer pipeline instances when provided
-    type Step = { type: TransformationType; value: number } | { type: 'vibrance'; value: number };
-    const steps: Step[] = pipeline
-      ? pipeline.filter(p => p.enabled).map(p => {
-          if (p.kind === 'vibrance') return { type: 'vibrance', value: (p.params as { vibrance: number }).vibrance } as Step;
-          if (p.kind === 'hue') return { type: 'hue', value: (p.params as { hue: number }).hue } as Step;
-          return { type: p.kind as Exclude<TransformationType, 'vibrance' | 'hue'>, value: (p.params as { value: number }).value } as Step;
-        })
-      : (transformOrder.map(t => ({ type: t, value: getTransformValue(t) })) as Step[]);
-
-    // Process transformations sequentially, batching consecutive matrix-compatible transforms
-    let i = 0;
-    while (i < steps.length) {
-      const matrixBatch: Array<{ matrix: number[]; offset: number[] } > = [];
-      let batchEnd = i;
-
-      while (batchEnd < steps.length) {
-        const s = steps[batchEnd];
-        const stype = s.type as TransformationType;
-        const sval = (s as any).value as number;
-        const isPerPixel = stype === 'vibrance' || (stype === 'saturation' && linearSaturation);
-        if (isPerPixel) break;
-        if (stype === 'brightness') matrixBatch.push(buildBrightnessMatrix(sval));
-        else if (stype === 'contrast') matrixBatch.push(buildContrastMatrix(sval));
-        else if (stype === 'saturation') matrixBatch.push({ matrix: buildSaturationMatrix(sval), offset: [0,0,0] });
-        else if (stype === 'hue') matrixBatch.push({ matrix: buildHueMatrix(sval), offset: [0,0,0] });
-        batchEnd++;
-      }
-
-      if (matrixBatch.length > 0) {
-        const composed = composeAffineTransforms(matrixBatch);
-        applyMatrixToImageData(imageData, composed.matrix, composed.offset);
-        i = batchEnd;
-      } else {
-        const s = steps[i];
-        const stype = s.type as TransformationType;
-        const sval = (s as any).value as number;
-        for (let j = 0; j < data.length; j += 4) {
-          const alpha = data[j + 3];
-          if (alpha === 0) continue;
-          const rgb: RGB = { r: data[j], g: data[j+1], b: data[j+2] };
-          let transformed: RGB = rgb;
-          if (stype === 'vibrance') {
-            transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
-          } else if (stype === 'saturation') {
-            transformed = applySaturationLinear(rgb, sval);
-          }
-          data[j] = transformed.r;
-          data[j+1] = transformed.g;
-          data[j+2] = transformed.b;
+    if (!pipeline) {
+      // Legacy path using transformOrder
+      type Step = { type: TransformationType; value: number } | { type: 'vibrance'; value: number };
+      const steps: Step[] = transformOrder.map(t => ({ type: t, value: getTransformValue(t) })) as Step[];
+      let i = 0;
+      while (i < steps.length) {
+        const matrixBatch: Array<{ matrix: number[]; offset: number[] } > = [];
+        let batchEnd = i;
+        while (batchEnd < steps.length) {
+          const s = steps[batchEnd];
+          const stype = s.type as TransformationType;
+          const sval = (s as any).value as number;
+          const isPerPixel = stype === 'vibrance' || (stype === 'saturation' && linearSaturation);
+          if (isPerPixel) break;
+          if (stype === 'brightness') matrixBatch.push(buildBrightnessMatrix(sval));
+          else if (stype === 'contrast') matrixBatch.push(buildContrastMatrix(sval));
+          else if (stype === 'saturation') matrixBatch.push({ matrix: buildSaturationMatrix(sval), offset: [0,0,0] });
+          else if (stype === 'hue') matrixBatch.push({ matrix: buildHueMatrix(sval), offset: [0,0,0] });
+          batchEnd++;
         }
-        i++;
+        if (matrixBatch.length > 0) {
+          const composed = composeAffineTransforms(matrixBatch);
+          applyMatrixToImageData(imageData, composed.matrix, composed.offset);
+          i = batchEnd;
+        } else {
+          const s = steps[i];
+          const stype = s.type as TransformationType;
+          const sval = (s as any).value as number;
+          for (let j = 0; j < data.length; j += 4) {
+            const alpha = data[j + 3];
+            if (alpha === 0) continue;
+            const rgb: RGB = { r: data[j], g: data[j+1], b: data[j+2] };
+            let transformed: RGB = rgb;
+            if (stype === 'vibrance') {
+              transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
+            } else if (stype === 'saturation') {
+              transformed = applySaturationLinear(rgb, sval);
+            }
+            data[j] = transformed.r;
+            data[j+1] = transformed.g;
+            data[j+2] = transformed.b;
+          }
+          i++;
+        }
+      }
+    } else {
+      // Instance-based path, including convolution-backed adjustments
+      for (const inst of pipeline) {
+        if (!inst.enabled) continue;
+        if (inst.kind === 'brightness' || inst.kind === 'contrast' || inst.kind === 'saturation' || inst.kind === 'hue' || inst.kind === 'vibrance') {
+          const kind = inst.kind;
+          if (kind === 'brightness' || kind === 'contrast' || (kind === 'saturation' && !linearSaturation) || kind === 'hue') {
+            // matrix-friendly; compose single
+            const batch: Array<{ matrix: number[]; offset: number[] }> = [];
+            if (kind === 'brightness') batch.push(buildBrightnessMatrix((inst.params as { value: number }).value));
+            if (kind === 'contrast') batch.push(buildContrastMatrix((inst.params as { value: number }).value));
+            if (kind === 'saturation' && !linearSaturation) batch.push({ matrix: buildSaturationMatrix((inst.params as { value: number }).value), offset: [0,0,0] });
+            if (kind === 'hue') batch.push({ matrix: buildHueMatrix((inst.params as { hue: number }).hue), offset: [0,0,0] });
+            const composed = composeAffineTransforms(batch);
+            applyMatrixToImageData(imageData, composed.matrix, composed.offset);
+          } else {
+            // per-pixel
+            const sval = kind === 'vibrance' ? (inst.params as { vibrance: number }).vibrance : (inst.params as { value: number }).value;
+            for (let j = 0; j < data.length; j += 4) {
+              const alpha = data[j + 3];
+              if (alpha === 0) continue;
+              const rgb: RGB = { r: data[j], g: data[j+1], b: data[j+2] };
+              let transformed: RGB = rgb;
+              if (kind === 'vibrance') transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
+              if (kind === 'saturation') transformed = applySaturationLinear(rgb, sval);
+              data[j] = transformed.r;
+              data[j+1] = transformed.g;
+              data[j+2] = transformed.b;
+            }
+          }
+        } else if (inst.kind === 'blur') {
+          const p = inst.params as BlurParams;
+          const out = cpuConvolutionBackend.blur(imageData, p);
+          // swap buffers
+          for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+        } else if (inst.kind === 'sharpen') {
+          const p = inst.params as SharpenParams;
+          const out = cpuConvolutionBackend.sharpen(imageData, p);
+          for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+        } else if (inst.kind === 'edge') {
+          const p = inst.params as EdgeParams;
+          const out = cpuConvolutionBackend.edge(imageData, p);
+          for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+        } else if (inst.kind === 'denoise') {
+          const p = inst.params as DenoiseParams;
+          const out = cpuConvolutionBackend.denoise(imageData, p);
+          for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+        }
       }
     }
 
@@ -520,7 +564,7 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, brightness, con
     // Legacy map for existing UI:
     const stepByStep: Record<TransformationType, RGB> = {} as Record<TransformationType, RGB>;
     let rgb = originalRGB;
-    const activeOrder = pipeline ? (pipeline.filter(p => p.enabled).map(p => p.kind as TransformationType)) : transformOrder;
+    const activeOrder = pipeline ? (pipeline.filter(p => p.enabled).map(p => (p.kind as any) as TransformationType)) : transformOrder;
     for (const transformType of activeOrder) {
       rgb = applyTransformation(rgb, transformType);
       stepByStep[transformType] = { ...rgb };
@@ -550,11 +594,94 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, brightness, con
         } else if (inst.kind === 'hue') {
           const deg = (inst.params as { hue: number }).hue;
           output = applyHue(inputRGB, deg);
+        } else if (inst.kind === 'blur') {
+          const p = inst.params as BlurParams;
+          const kernel = p.kind === 'gaussian' ? gaussianKernel(p.size, p.sigma) : boxKernel(p.size);
+          const [r, g, b] = convolveAtPixel(originalImageDataRef.current as ImageData, x, y, kernel, { padding: p.padding ?? 'edge', perChannel: true });
+          output = { r, g, b };
+        } else if (inst.kind === 'sharpen') {
+          const p = inst.params as SharpenParams;
+          const kernel = p.kernel ?? unsharpKernel(p.amount, p.size);
+          const [r, g, b] = convolveAtPixel(originalImageDataRef.current as ImageData, x, y, kernel, { padding: p.padding ?? 'edge', perChannel: true });
+          output = { r, g, b };
+        } else if (inst.kind === 'edge') {
+          const p = inst.params as EdgeParams;
+          const { kx, ky } = p.operator === 'sobel' ? sobelKernels() : prewittKernels();
+          const [rx, gx, bx] = convolveAtPixel(originalImageDataRef.current as ImageData, x, y, kx, { padding: p.padding ?? 'edge', perChannel: true });
+          const [ry, gy, by] = convolveAtPixel(originalImageDataRef.current as ImageData, x, y, ky, { padding: p.padding ?? 'edge', perChannel: true });
+          if (p.combine === 'x') output = { r: Math.abs(rx), g: Math.abs(gx), b: Math.abs(bx) };
+          else if (p.combine === 'y') output = { r: Math.abs(ry), g: Math.abs(gy), b: Math.abs(by) };
+          else output = { r: Math.hypot(rx, ry), g: Math.hypot(gx, gy), b: Math.hypot(bx, by) } as RGB;
+        } else if (inst.kind === 'denoise') {
+          const p = inst.params as DenoiseParams;
+          if (p.kind === 'mean') {
+            const kernel = boxKernel(p.size);
+            const [r, g, b] = convolveAtPixel(originalImageDataRef.current as ImageData, x, y, kernel, { padding: p.padding ?? 'edge', perChannel: true });
+            output = { r, g, b };
+          } else {
+            // median at pixel
+            const src = originalImageDataRef.current as ImageData;
+            const half = Math.floor(p.size / 2);
+            const pad: 'zero' | 'reflect' | 'edge' = p.padding ?? 'edge';
+            const valuesR: number[] = [];
+            const valuesG: number[] = [];
+            const valuesB: number[] = [];
+            const padIndex = (i: number, limit: number): number => {
+              if (i >= 0 && i < limit) return i;
+              if (pad === 'zero') return -1;
+              if (pad === 'edge') return i < 0 ? 0 : limit - 1;
+              let idx = i;
+              if (idx < 0) idx = -idx - 1;
+              const period = (limit - 1) * 2;
+              idx = idx % period;
+              if (idx >= limit) idx = period - idx;
+              return idx;
+            };
+            for (let ky = -half; ky <= half; ky++) {
+              for (let kx = -half; kx <= half; kx++) {
+                const sx = padIndex(x + kx, src.width);
+                const sy = padIndex(y + ky, src.height);
+                if (sx === -1 || sy === -1) { valuesR.push(0); valuesG.push(0); valuesB.push(0); continue; }
+                const idx = (sy * src.width + sx) * 4;
+                valuesR.push(src.data[idx]);
+                valuesG.push(src.data[idx + 1]);
+                valuesB.push(src.data[idx + 2]);
+              }
+            }
+            valuesR.sort((a,b)=>a-b); valuesG.sort((a,b)=>a-b); valuesB.sort((a,b)=>a-b);
+            const m = Math.floor(valuesR.length/2);
+            output = { r: valuesR[m], g: valuesG[m], b: valuesB[m] } as RGB;
+          }
         }
         steps.push({ id: inst.id, kind: inst.kind, inputRGB, outputRGB: output });
         color = output;
       }
       rgb = color;
+    }
+
+    // determine active convolution-backed instance for inspector context (last enabled)
+    let activeConv: InspectorData['activeConv'] | undefined = undefined;
+    if (pipeline) {
+      const lastConv = [...pipeline].reverse().find(p => p.enabled && (p.kind === 'blur' || p.kind === 'sharpen' || p.kind === 'edge' || p.kind === 'denoise'));
+      if (lastConv) {
+        if (lastConv.kind === 'blur') {
+          const p = lastConv.params as BlurParams;
+          const kernel = p.kind === 'gaussian' ? gaussianKernel(p.size, p.sigma) : boxKernel(p.size);
+          activeConv = { kind: 'blur', kernel, padding: (p.padding ?? 'edge') };
+        } else if (lastConv.kind === 'sharpen') {
+          const p = lastConv.params as SharpenParams;
+          const kernel = p.kernel ?? unsharpKernel(p.amount, p.size);
+          activeConv = { kind: 'sharpen', kernel, padding: (p.padding ?? 'edge') };
+        } else if (lastConv.kind === 'edge') {
+          const p = lastConv.params as EdgeParams;
+          const ek = p.operator === 'sobel' ? sobelKernels() : prewittKernels();
+          activeConv = { kind: 'edge', edgeKernels: ek, padding: (p.padding ?? 'edge') };
+        } else if (lastConv.kind === 'denoise') {
+          const p = lastConv.params as DenoiseParams;
+          const kernel = p.kind === 'mean' ? boxKernel(p.size) : undefined;
+          activeConv = { kind: 'denoise', kernel, padding: (p.padding ?? 'edge') };
+        }
+      }
     }
 
     setInspectorData({
@@ -566,7 +693,8 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, brightness, con
       transformOrder: activeOrder,
       cursorX: e.clientX,
       cursorY: e.clientY,
-      steps
+      steps,
+      activeConv
     });
   };
 

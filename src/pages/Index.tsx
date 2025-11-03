@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Upload } from "lucide-react";
 import { ImageCanvas } from "@/components/ImageCanvas";
 import { MathExplanation } from "@/components/MathExplanation";
-import { TransformationType, RGB } from "@/types/transformations";
+import { TransformationType, RGB, BlurParams, SharpenParams, EdgeParams, DenoiseParams } from "@/types/transformations";
 import { TransformationSliders } from "@/components/TransformationSliders";
 import { downsizeImageToDataURL } from "@/lib/imageResize";
 import { FilterInstance } from "@/types/transformations";
@@ -135,6 +135,37 @@ export default function Index(_props: IndexProps) {
                   _props.pipelineApi?.updateInstanceParams?.(id, (prev) => {
                     if (kind === 'vibrance') return { ...prev, params: { vibrance: nextValue } };
                     if (kind === 'hue') return { ...prev, params: { hue: nextValue } };
+                    if (kind === 'blur') {
+                      const p = prev.params as BlurParams;
+                      if (p.kind === 'gaussian') {
+                        const sigma = Math.max(0.05, Number(nextValue) || 0.05);
+                        return { ...prev, params: { ...p, sigma } };
+                      } else {
+                        const size = ((): 3|5|7 => {
+                          const v = Math.round(Number(nextValue));
+                          if (v <= 4) return 3; if (v <= 6) return 5; return 7;
+                        })();
+                        return { ...prev, params: { ...p, size } };
+                      }
+                    }
+                    if (kind === 'sharpen') {
+                      const p = prev.params as SharpenParams;
+                      const amount = Math.max(0, Number(nextValue) || 0);
+                      return { ...prev, params: { ...p, amount } };
+                    }
+                    if (kind === 'edge') {
+                      const p = prev.params as EdgeParams;
+                      const size = (Number(nextValue) || 3) <= 4 ? 3 : 5;
+                      return { ...prev, params: { ...p, size } };
+                    }
+                    if (kind === 'denoise') {
+                      const p = prev.params as DenoiseParams;
+                      const size = ((): 3|5|7 => {
+                        const v = Math.round(Number(nextValue));
+                        if (v <= 4) return 3; if (v <= 6) return 5; return 7;
+                      })();
+                      return { ...prev, params: { ...p, size } };
+                    }
                     return { ...prev, params: { value: nextValue } };
                   });
                   return;
@@ -179,6 +210,7 @@ export default function Index(_props: IndexProps) {
               selectedInstanceId={_props.selectedInstanceId ?? null}
               hasImage={!!image}
               activeTab={activeTab}
+              onUpdateInstanceParams={_props.pipelineApi?.updateInstanceParams}
             />
           </div>
         </div>

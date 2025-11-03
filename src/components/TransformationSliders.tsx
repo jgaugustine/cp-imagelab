@@ -2,7 +2,7 @@ import { DndContext, closestCenter, DragEndEvent, KeyboardSensor, PointerSensor,
 import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Sun, Circle, Palette, Rainbow, Droplet, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { TransformationType, FilterKind, FilterInstance, formatValueFor } from '@/types/transformations';
+import { TransformationType, FilterKind, FilterInstance, formatValueFor, BlurParams, SharpenParams, EdgeParams, DenoiseParams } from '@/types/transformations';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -165,6 +165,11 @@ export function TransformationSliders(props: TransformationSlidersProps) {
               <DropdownMenuItem onClick={() => onAddInstance('saturation')}>Saturation</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAddInstance('vibrance')}>Vibrance</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAddInstance('hue')}>Hue Rotation</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => onAddInstance('blur')}>Blur</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAddInstance('sharpen')}>Sharpen</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAddInstance('denoise')}>Denoise</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAddInstance('edge')}>Edge Detect</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -180,22 +185,26 @@ export function TransformationSliders(props: TransformationSlidersProps) {
           <SortableContext items={props.pipeline.map(p => p.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-3">
               {props.pipeline.map((inst, index) => {
-                const type = inst.kind as TransformationType;
-                const config = getTransformConfig(type);
-                const currentValue = type === 'vibrance'
+                const kind = inst.kind;
+                const isVector: boolean = (kind === 'brightness' || kind === 'contrast' || kind === 'saturation' || kind === 'vibrance' || kind === 'hue');
+                const config = isVector ? getTransformConfig(kind as TransformationType) : { min: 0, max: 10, step: 0.1, defaultValue: 1, formatValue: (v: number) => `${v}` };
+                const currentValue = kind === 'vibrance'
                   ? (inst.params as { vibrance: number }).vibrance
-                  : type === 'hue'
+                  : kind === 'hue'
                   ? (inst.params as { hue: number }).hue
+                  : kind === 'blur'
+                  ? (() => { const p = inst.params as BlurParams; return p.kind === 'gaussian' ? (p.sigma ?? 1.0) : p.size; })()
+                  : kind === 'sharpen'
+                  ? (inst.params as SharpenParams).amount
+                  : kind === 'edge'
+                  ? (inst.params as EdgeParams).size
+                  : kind === 'denoise'
+                  ? (inst.params as DenoiseParams).size
                   : (inst.params as { value: number }).value;
-                const label = TRANSFORM_LABELS[type];
-                const formattedNow = formatValueFor(
-                  inst.kind,
-                  type === 'vibrance'
-                    ? { vibrance: currentValue }
-                    : type === 'hue'
-                    ? { hue: currentValue }
-                    : { value: currentValue }
-                );
+                const label = (kind === 'brightness' || kind === 'contrast' || kind === 'saturation' || kind === 'vibrance' || kind === 'hue')
+                  ? TRANSFORM_LABELS[kind as TransformationType]
+                  : kind === 'blur' ? 'Blur' : kind === 'sharpen' ? 'Sharpen' : kind === 'edge' ? 'Edge Detect' : 'Denoise';
+                const formattedNow = formatValueFor(inst.kind, inst.params);
                 return (
                   <DraggableSliderCard
                     key={inst.id}
@@ -210,12 +219,12 @@ export function TransformationSliders(props: TransformationSlidersProps) {
                     step={config.step}
                     defaultValue={config.defaultValue}
                     formatValue={() => formattedNow}
-                    icon={getIcon(type)}
+                    icon={isVector ? getIcon(kind as TransformationType) : undefined}
                     label={label}
                     onDelete={props.onDeleteInstance}
                     onToggleEnabled={props.onToggleInstance}
                     onClick={onCardClick}
-                    isActive={activeTab === type}
+                    isActive={activeTab === kind}
                   />
                 );
               })}

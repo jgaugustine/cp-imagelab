@@ -1,6 +1,8 @@
 import { Card } from "@/components/ui/card";
 import RGBCubeVisualizer from "@/components/RGBCubeVisualizer";
-import { FilterInstance, TransformationType } from "@/types/transformations";
+import { FilterInstance, TransformationType, BlurParams, SharpenParams, EdgeParams, DenoiseParams } from "@/types/transformations";
+import KernelGrid from "@/components/Convolution/KernelGrid";
+import { gaussianKernel, boxKernel, sobelKernels, prewittKernels, unsharpKernel } from "@/lib/convolution";
 // Tabs removed; we render sections conditionally based on activeTab
 import { useEffect, useRef, useState, useMemo } from "react";
 
@@ -24,9 +26,11 @@ interface MathExplanationProps {
   hasImage?: boolean;
   // Which explanation section to show
   activeTab?: string;
+  // Allow updating selected instance params (for kernel type/size, etc.)
+  onUpdateInstanceParams?: (id: string, updater: (prev: FilterInstance) => FilterInstance) => void;
 }
 
-export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, pipeline, selectedInstanceId, hasImage, activeTab }: MathExplanationProps) {
+export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, pipeline, selectedInstanceId, hasImage, activeTab, onUpdateInstanceParams }: MathExplanationProps) {
   const [localLastChange, setLocalLastChange] = useState<'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | undefined>(undefined);
   const prevRef = useRef({ brightness, contrast, saturation, vibrance, hue });
 
@@ -615,6 +619,171 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               selectedInstanceId={selectedId}
             />
           </Card>
+        </div>
+        )}
+
+        {/* Convolution-backed layers */}
+        {activeTab === 'blur' && pipeline && selectedInstanceId && (
+        <div className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-foreground">Blur (convolution)</h3>
+            <p className="text-sm text-muted-foreground">Applies a smoothing kernel over the neighborhood.</p>
+          </div>
+          {(() => {
+            const inst = pipeline.find(p => p.id === selectedInstanceId);
+            if (!inst) return null;
+            const p = inst.params as BlurParams;
+            const k = p.kind === 'gaussian' ? gaussianKernel(p.size, p.sigma) : boxKernel(p.size);
+            return (
+              <>
+                <div className="flex items-center gap-3 text-sm">
+                  <label className="text-muted-foreground">Type</label>
+                  <select className="border rounded px-2 py-1 bg-card" value={p.kind}
+                    onChange={(e) => onUpdateInstanceParams?.(inst.id, prev => ({ ...prev, params: { ...(prev.params as BlurParams), kind: e.target.value as 'box'|'gaussian' } }))}>
+                    <option value="gaussian">Gaussian</option>
+                    <option value="box">Box</option>
+                  </select>
+                  <label className="text-muted-foreground">Size</label>
+                  <select className="border rounded px-2 py-1 bg-card" value={p.size}
+                    onChange={(e) => onUpdateInstanceParams?.(inst.id, prev => ({ ...prev, params: { ...(prev.params as BlurParams), size: Number(e.target.value) as 3|5|7 } }))}>
+                    <option value={3}>3×3</option>
+                    <option value={5}>5×5</option>
+                    <option value={7}>7×7</option>
+                  </select>
+                </div>
+                <KernelGrid kernel={k} title={`${p.kind} ${p.size}×${p.size}`} />
+              </>
+            );
+          })()}
+        </div>
+        )}
+
+        {activeTab === 'sharpen' && pipeline && selectedInstanceId && (
+        <div className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-foreground">Sharpen (unsharp mask)</h3>
+            <p className="text-sm text-muted-foreground">Enhances edges by subtracting a blurred version scaled by amount.</p>
+          </div>
+          {(() => {
+            const inst = pipeline.find(p => p.id === selectedInstanceId);
+            if (!inst) return null;
+            const p = inst.params as SharpenParams;
+            const k = p.kernel ?? unsharpKernel(p.amount, p.size);
+            return (
+              <>
+                <div className="flex items-center gap-3 text-sm">
+                  <label className="text-muted-foreground">Size</label>
+                  <select className="border rounded px-2 py-1 bg-card" value={p.size}
+                    onChange={(e) => onUpdateInstanceParams?.(inst.id, prev => ({ ...prev, params: { ...(prev.params as SharpenParams), size: Number(e.target.value) as 3|5 } }))}>
+                    <option value={3}>3×3</option>
+                    <option value={5}>5×5</option>
+                  </select>
+                </div>
+                <KernelGrid kernel={k} title={`${p.size}×${p.size} amt ${p.amount.toFixed(2)}`} />
+              </>
+            );
+          })()}
+        </div>
+        )}
+
+        {activeTab === 'edge' && pipeline && selectedInstanceId && (
+        <div className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-foreground">Edge Detection</h3>
+            <p className="text-sm text-muted-foreground">Gradient kernels highlight intensity changes.</p>
+          </div>
+          {(() => {
+            const inst = pipeline.find(p => p.id === selectedInstanceId);
+            if (!inst) return null;
+            const p = inst.params as EdgeParams;
+            const { kx, ky } = p.operator === 'sobel' ? sobelKernels() : prewittKernels();
+            return (
+              <>
+                <div className="flex items-center gap-3 text-sm">
+                  <label className="text-muted-foreground">Operator</label>
+                  <select className="border rounded px-2 py-1 bg-card" value={p.operator}
+                    onChange={(e) => onUpdateInstanceParams?.(inst.id, prev => ({ ...prev, params: { ...(prev.params as EdgeParams), operator: e.target.value as 'sobel'|'prewitt' } }))}>
+                    <option value="sobel">Sobel</option>
+                    <option value="prewitt">Prewitt</option>
+                  </select>
+                  <label className="text-muted-foreground">Combine</label>
+                  <select className="border rounded px-2 py-1 bg-card" value={p.combine}
+                    onChange={(e) => onUpdateInstanceParams?.(inst.id, prev => ({ ...prev, params: { ...(prev.params as EdgeParams), combine: e.target.value as 'magnitude'|'x'|'y' } }))}>
+                    <option value="magnitude">Magnitude</option>
+                    <option value="x">X</option>
+                    <option value="y">Y</option>
+                  </select>
+                  <label className="text-muted-foreground">Size</label>
+                  <select className="border rounded px-2 py-1 bg-card" value={p.size}
+                    onChange={(e) => onUpdateInstanceParams?.(inst.id, prev => ({ ...prev, params: { ...(prev.params as EdgeParams), size: Number(e.target.value) as 3|5 } }))}>
+                    <option value={3}>3×3</option>
+                    <option value={5}>5×5</option>
+                  </select>
+                </div>
+                <div className="flex gap-4">
+                  <KernelGrid kernel={kx} title={`${p.operator} – X`} />
+                  <KernelGrid kernel={ky} title={`${p.operator} – Y`} />
+                </div>
+              </>
+            );
+          })()}
+        </div>
+        )}
+
+        {activeTab === 'denoise' && pipeline && selectedInstanceId && (
+        <div className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-foreground">Denoise</h3>
+            <p className="text-sm text-muted-foreground">Mean filter is convolution; median is non-linear neighborhood rank.</p>
+          </div>
+          {(() => {
+            const inst = pipeline.find(p => p.id === selectedInstanceId);
+            if (!inst) return null;
+            const p = inst.params as DenoiseParams;
+            if (p.kind === 'mean') {
+              const k = boxKernel(p.size);
+              return (
+                <>
+                  <div className="flex items-center gap-3 text-sm">
+                    <label className="text-muted-foreground">Kind</label>
+                    <select className="border rounded px-2 py-1 bg-card" value={p.kind}
+                      onChange={(e) => onUpdateInstanceParams?.(inst.id, prev => ({ ...prev, params: { ...(prev.params as DenoiseParams), kind: e.target.value as 'mean'|'median' } }))}>
+                      <option value="mean">Mean</option>
+                      <option value="median">Median</option>
+                    </select>
+                    <label className="text-muted-foreground">Size</label>
+                    <select className="border rounded px-2 py-1 bg-card" value={p.size}
+                      onChange={(e) => onUpdateInstanceParams?.(inst.id, prev => ({ ...prev, params: { ...(prev.params as DenoiseParams), size: Number(e.target.value) as 3|5|7 } }))}>
+                      <option value={3}>3×3</option>
+                      <option value={5}>5×5</option>
+                      <option value={7}>7×7</option>
+                    </select>
+                  </div>
+                  <KernelGrid kernel={k} title={`Mean ${p.size}×${p.size}`} />
+                </>
+              );
+            }
+            return (
+              <>
+                <div className="flex items-center gap-3 text-sm">
+                  <label className="text-muted-foreground">Kind</label>
+                  <select className="border rounded px-2 py-1 bg-card" value={p.kind}
+                    onChange={(e) => onUpdateInstanceParams?.(inst.id, prev => ({ ...prev, params: { ...(prev.params as DenoiseParams), kind: e.target.value as 'mean'|'median' } }))}>
+                    <option value="mean">Mean</option>
+                    <option value="median">Median</option>
+                  </select>
+                  <label className="text-muted-foreground">Size</label>
+                  <select className="border rounded px-2 py-1 bg-card" value={p.size}
+                    onChange={(e) => onUpdateInstanceParams?.(inst.id, prev => ({ ...prev, params: { ...(prev.params as DenoiseParams), size: Number(e.target.value) as 3|5|7 } }))}>
+                    <option value={3}>3×3</option>
+                    <option value={5}>5×5</option>
+                    <option value={7}>7×7</option>
+                  </select>
+                </div>
+                <div className="text-xs text-muted-foreground">Median uses sorted neighborhood values (no fixed kernel).</div>
+              </>
+            );
+          })()}
         </div>
         )}
       </div>
