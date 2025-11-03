@@ -112,6 +112,7 @@ export default function Index() {
                   setLinearSaturation(false);
                 }}
                 onCardClick={(transformType) => setActiveTab(transformType)}
+                activeTab={activeTab}
               />
             </Card>
           </div>

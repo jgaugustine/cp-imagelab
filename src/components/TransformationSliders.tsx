@@ -20,6 +20,7 @@ interface TransformationSlidersProps {
   setHue: (value: number) => void;
   onResetAll: () => void;
   onCardClick?: (transformType: TransformationType) => void;
+  activeTab?: string;
 }
 
 const getIcon = (type: TransformationType) => {
@@ -85,6 +86,7 @@ export function TransformationSliders({
   onOrderChange,
   onResetAll,
   onCardClick,
+  activeTab,
   ...rest
 }: TransformationSlidersProps) {
   const sensors = useSensors(
@@ -134,6 +136,7 @@ export function TransformationSliders({
                   icon={getIcon(type)}
                   label={TRANSFORM_LABELS[type]}
                   onClick={onCardClick}
+                  isActive={activeTab === type}
                 />
               );
             })}

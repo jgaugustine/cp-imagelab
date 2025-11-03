@@ -62,6 +62,8 @@ export function DraggableSliderCard({
         relative p-4 transition-all
         ${isDragging 
           ? 'shadow-lg opacity-50 z-50 border-primary' 
+          : isActive
+          ? 'border-primary bg-primary/5 cursor-pointer'
           : 'border-border bg-card hover:border-primary/50 cursor-pointer'
         }
       `}
