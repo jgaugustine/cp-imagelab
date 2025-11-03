@@ -41,15 +41,15 @@ const getIcon = (type: TransformationType) => {
 const getTransformConfig = (type: TransformationType) => {
   switch (type) {
     case 'brightness':
-      return { min: -100, max: 100, step: 1, formatValue: (v: number) => v > 0 ? `+${v}` : `${v}` };
+      return { min: -100, max: 100, step: 1, defaultValue: 0, formatValue: (v: number) => v > 0 ? `+${v}` : `${v}` };
     case 'contrast':
-      return { min: 0, max: 2, step: 0.01, formatValue: (v: number) => `${v.toFixed(2)}x` };
+      return { min: 0, max: 2, step: 0.01, defaultValue: 1, formatValue: (v: number) => `${v.toFixed(2)}x` };
     case 'saturation':
-      return { min: 0, max: 2, step: 0.01, formatValue: (v: number) => `${v.toFixed(2)}x` };
+      return { min: 0, max: 2, step: 0.01, defaultValue: 1, formatValue: (v: number) => `${v.toFixed(2)}x` };
     case 'vibrance':
-      return { min: -1, max: 1, step: 0.01, formatValue: (v: number) => v >= 0 ? `+${v.toFixed(2)}` : `${v.toFixed(2)}` };
+      return { min: -1, max: 1, step: 0.01, defaultValue: 0, formatValue: (v: number) => v >= 0 ? `+${v.toFixed(2)}` : `${v.toFixed(2)}` };
     case 'hue':
-      return { min: -180, max: 180, step: 1, formatValue: (v: number) => `${v > 0 ? '+' : ''}${v}°` };
+      return { min: -180, max: 180, step: 1, defaultValue: 0, formatValue: (v: number) => `${v > 0 ? '+' : ''}${v}°` };
   }
 };
 
@@ -132,6 +132,7 @@ export function TransformationSliders({
                   min={config.min}
                   max={config.max}
                   step={config.step}
+                  defaultValue={config.defaultValue}
                   formatValue={config.formatValue}
                   icon={getIcon(type)}
                   label={TRANSFORM_LABELS[type]}

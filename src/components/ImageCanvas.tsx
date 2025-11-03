@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { PixelInspector } from "./PixelInspector";
 import { TransformationType, RGB } from "@/types/transformations";
+import { Button } from "@/components/ui/button";
 
 interface ImageCanvasProps {
   image: HTMLImageElement;
@@ -339,6 +340,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [inspectorData, setInspectorData] = useState<InspectorData | null>(null);
   const originalImageDataRef = useRef<ImageData | null>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
 
   const getTransformValue = (type: TransformationType): number => {
     switch (type) {
@@ -385,6 +387,11 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
 
     // Store original image data for inspection (refresh per image/params)
     originalImageDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    // If showing original, skip applying transforms (canvas already has original drawn)
+    if (showOriginal) {
+      return;
+    }
 
     // Process transformations sequentially, batching consecutive matrix-compatible transforms
     // This maintains correct order when matrix and per-pixel transforms are interleaved
@@ -464,7 +471,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
     }
 
     ctx.putImageData(imageData, 0, 0);
-  }, [image, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder]);
+  }, [image, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder, showOriginal]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!enableInspector) return;
@@ -604,7 +611,20 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
   };
 
   return (
-    <>
+    <div className="relative w-full h-full">
+      <div className="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 transform">
+        <Button
+          className="pointer-events-auto"
+          variant="secondary"
+          onPointerDown={() => setShowOriginal(true)}
+          onPointerUp={() => setShowOriginal(false)}
+          onPointerLeave={() => setShowOriginal(false)}
+          onBlur={() => setShowOriginal(false)}
+          aria-pressed={showOriginal}
+        >
+          Show Original (Hold)
+        </Button>
+      </div>
       <canvas
         ref={canvasRef}
         className="w-full h-full object-contain rounded-lg border border-border cursor-crosshair"
@@ -623,7 +643,7 @@ export function ImageCanvas({ image, brightness, contrast, saturation, hue, line
           linearSaturation={linearSaturation}
         />
       )}
-    </>
+    </div>
   );
 }
 

@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import RGBCubeVisualizer from "@/components/RGBCubeVisualizer";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+// Tabs removed; we render sections conditionally based on activeTab
 import { useEffect, useRef, useState, useMemo } from "react";
 
 interface MathExplanationProps {
@@ -18,12 +18,11 @@ interface MathExplanationProps {
   transformOrder?: ('brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue')[];
   // Image upload state
   hasImage?: boolean;
-  // Controlled tab state
+  // Which explanation section to show
   activeTab?: string;
-  onActiveTabChange?: (value: string) => void;
 }
 
-export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, hasImage, activeTab, onActiveTabChange }: MathExplanationProps) {
+export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, hasImage, activeTab }: MathExplanationProps) {
   const [localLastChange, setLocalLastChange] = useState<'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | undefined>(undefined);
   const prevRef = useRef({ brightness, contrast, saturation, vibrance, hue });
 
@@ -49,12 +48,13 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
 
   return (
     <Card className="p-6 border-border bg-card h-fit">
-      <Tabs value={activeTab} onValueChange={onActiveTabChange} className="w-full">
+      <div className="w-full">
         <div className="mb-4">
           <h2 className="text-xl font-semibold text-primary">Mathematical Transformations</h2>
         </div>
 
-        <TabsContent value="brightness" className="space-y-4 mt-4">
+        {activeTab === 'brightness' && (
+        <div className="space-y-4 mt-4">
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-foreground">Matrix Addition</h3>
             <p className="text-sm text-muted-foreground">
@@ -123,9 +123,11 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               straight along the gray diagonal. Results are clamped to [0,255] so values don't wrap.
             </div>
           </div>
-        </TabsContent>
+        </div>
+        )}
 
-        <TabsContent value="vibrance" className="space-y-4 mt-4">
+        {activeTab === 'vibrance' && (
+        <div className="space-y-4 mt-4">
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-foreground">Adaptive Color Adjustment</h3>
             <p className="text-sm text-muted-foreground">
@@ -244,9 +246,11 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             </div>
           </div>
           
-        </TabsContent>
+        </div>
+        )}
 
-        <TabsContent value="contrast" className="space-y-4 mt-4">
+        {activeTab === 'contrast' && (
+        <div className="space-y-4 mt-4">
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-foreground">Scalar Multiplication</h3>
             <p className="text-sm text-muted-foreground">
@@ -333,9 +337,11 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             </div>
           </div>
           
-        </TabsContent>
+        </div>
+        )}
 
-        <TabsContent value="saturation" className="space-y-4 mt-4">
+        {activeTab === 'saturation' && (
+        <div className="space-y-4 mt-4">
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-foreground">Color Space Transformation</h3>
             <p className="text-sm text-muted-foreground">
@@ -460,9 +466,11 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           
           
           
-        </TabsContent>
+        </div>
+        )}
 
-        <TabsContent value="hue" className="space-y-4 mt-4">
+        {activeTab === 'hue' && (
+        <div className="space-y-4 mt-4">
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-foreground">Rotation Matrix</h3>
             <p className="text-sm text-muted-foreground">
@@ -540,9 +548,11 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               </div>
             </div>
           </Card>
-        </TabsContent>
+        </div>
+        )}
 
-        <TabsContent value="all" className="space-y-4 mt-4">
+        {activeTab === 'all' && (
+        <div className="space-y-4 mt-4">
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-foreground">Visualize Composite Changes</h3>
             <p className="text-sm text-muted-foreground">Shows the original and full-pipeline transformed vectors, plus a guide for the most recently edited transform.</p>
@@ -551,8 +561,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: All vector-based transforms</h4>
             <RGBCubeVisualizer mode="all" params={allParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} transformOrder={transformOrder} hasImage={hasImage} />
           </Card>
-        </TabsContent>
-      </Tabs>
+        </div>
+        )}
+      </div>
     </Card>
   );
 }

@@ -131,7 +131,6 @@ export default function Index() {
               transformOrder={transformOrder}
               hasImage={!!image}
               activeTab={activeTab}
-              onActiveTabChange={setActiveTab}
             />
           </div>
         </div>

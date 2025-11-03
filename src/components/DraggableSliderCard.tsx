@@ -14,6 +14,7 @@ interface DraggableSliderCardProps {
   min: number;
   max: number;
   step: number;
+  defaultValue: number;
   formatValue: (value: number) => string;
   icon: React.ReactNode;
   label: string;
@@ -29,6 +30,7 @@ export function DraggableSliderCard({
   min,
   max,
   step,
+  defaultValue,
   formatValue,
   icon,
   label,
@@ -110,16 +112,24 @@ export function DraggableSliderCard({
             </div>
           </div>
           
-          <Slider
-            value={[value]}
-            onValueChange={([v]) => onChange(v)}
-            min={min}
-            max={max}
-            step={step}
-            disabled={isDragging}
-            thumbHighlight={recentlyChanged}
-            onDoubleClick={() => onChange(0)}
-          />
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onMouseUp={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Slider
+              value={[value]}
+              onValueChange={([v]) => onChange(v)}
+              min={min}
+              max={max}
+              step={step}
+              disabled={isDragging}
+              thumbHighlight={recentlyChanged}
+              onDoubleClick={() => onChange(defaultValue)}
+            />
+          </div>
         </div>
       </div>
     </Card>
