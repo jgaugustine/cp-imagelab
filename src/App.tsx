@@ -12,8 +12,6 @@ const queryClient = new QueryClient();
 
 const App = () => {
   // Instance-based pipeline lifted to the top-level app
-  const [pipeline, setPipeline] = useState<FilterInstance[]>([]);
-  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
   const generateId = useCallback(() => {
     const g: any = (typeof crypto !== 'undefined' ? crypto : undefined) as any;
     if (g && typeof g.randomUUID === 'function') {
@@ -21,6 +19,16 @@ const App = () => {
     }
     return `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
   }, []);
+  const [pipeline, setPipeline] = useState<FilterInstance[]>(() => {
+    const kinds: FilterKind[] = ['brightness', 'contrast', 'saturation', 'vibrance', 'hue'];
+    return kinds.map(kind => ({
+      id: typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function' ? (crypto as any).randomUUID() : `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`,
+      kind,
+      params: defaultParamsFor(kind),
+      enabled: true,
+    }));
+  });
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
 
   // Actions: add, duplicate, delete, toggle enable, reorder, and update params
   const addInstance = useCallback((kind: FilterKind) => {

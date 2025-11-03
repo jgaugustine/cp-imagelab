@@ -88,6 +88,40 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           <h2 className="text-xl font-semibold text-primary">Mathematical Transformations</h2>
         </div>
 
+        {/* Persistently mounted RGB cubes for single-tool tabs; visibility toggled by activeTab */}
+        <div className="space-y-3">
+          <div className={activeTab === 'brightness' ? '' : 'hidden pointer-events-none'} aria-hidden={activeTab !== 'brightness'}>
+            <Card className="p-4 border-border bg-card">
+              <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Brightness (addition)</h4>
+              <RGBCubeVisualizer mode="brightness" isVisible={activeTab === 'brightness'} params={brightnessParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} transformOrder={effectiveOrder} pipeline={pipeline} selectedInstanceId={selectedId} />
+            </Card>
+          </div>
+          <div className={activeTab === 'contrast' ? '' : 'hidden pointer-events-none'} aria-hidden={activeTab !== 'contrast'}>
+            <Card className="p-4 border-border bg-card">
+              <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Contrast (scale around midpoint)</h4>
+              <RGBCubeVisualizer mode="contrast" isVisible={activeTab === 'contrast'} params={contrastParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} transformOrder={effectiveOrder} pipeline={pipeline} selectedInstanceId={selectedId} />
+            </Card>
+          </div>
+          <div className={activeTab === 'saturation' ? '' : 'hidden pointer-events-none'} aria-hidden={activeTab !== 'saturation'}>
+            <Card className="p-4 border-border bg-card">
+              <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Saturation (interpolate to gray)</h4>
+              <RGBCubeVisualizer mode="saturation" isVisible={activeTab === 'saturation'} params={saturationParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} transformOrder={effectiveOrder} pipeline={pipeline} selectedInstanceId={selectedId} />
+            </Card>
+          </div>
+          <div className={activeTab === 'vibrance' ? '' : 'hidden pointer-events-none'} aria-hidden={activeTab !== 'vibrance'}>
+            <Card className="p-4 border-border bg-card">
+              <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Vibrance (adaptive stretch from gray)</h4>
+              <RGBCubeVisualizer mode="vibrance" isVisible={activeTab === 'vibrance'} params={vibranceParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} transformOrder={effectiveOrder} pipeline={pipeline} selectedInstanceId={selectedId} />
+            </Card>
+          </div>
+          <div className={activeTab === 'hue' ? '' : 'hidden pointer-events-none'} aria-hidden={activeTab !== 'hue'}>
+            <Card className="p-4 border-border bg-card">
+              <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube Rotation</h4>
+              <RGBCubeVisualizer mode="hue" isVisible={activeTab === 'hue'} params={hueParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} transformOrder={effectiveOrder} pipeline={pipeline} selectedInstanceId={selectedId} />
+            </Card>
+          </div>
+        </div>
+
         {activeTab === 'brightness' && (
         <div className="space-y-4 mt-4">
           <div className="space-y-2">
@@ -96,11 +130,6 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               Brightness adjustment is a simple matrix addition operation applied uniformly to all RGB channels.
             </p>
           </div>
-
-          <Card className="p-4 border-border bg-card">
-            <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Brightness (addition)</h4>
-            <RGBCubeVisualizer mode="brightness" params={brightnessParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} />
-          </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
             <div className="text-muted-foreground mt-2 text-xs">
@@ -169,11 +198,6 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               Vibrance adjusts saturation adaptively: positive values boost low‑chroma pixels more than high‑chroma ones; negative values reduce low‑chroma pixels more gently, preserving skin tones and avoiding clipping.
             </p>
           </div>
-
-          <Card className="p-4 border-border bg-card">
-            <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Vibrance (adaptive stretch from gray)</h4>
-            <RGBCubeVisualizer mode="vibrance" params={vibranceParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} />
-          </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
             <div className="text-muted-foreground mt-2 text-xs">
@@ -292,11 +316,6 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               Contrast is achieved by scaling each color channel around the midpoint (128).
             </p>
           </div>
-
-          <Card className="p-4 border-border bg-card">
-            <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Contrast (scale around midpoint)</h4>
-            <RGBCubeVisualizer mode="contrast" params={contrastParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} />
-          </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
             <div className="text-muted-foreground mt-2 text-xs">
@@ -383,11 +402,6 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               Saturation adjusts color intensity by interpolating between the pixel color and a neutral gray for that pixel.
             </p>
           </div>
-
-          <Card className="p-4 border-border bg-card">
-            <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Saturation (interpolate to gray)</h4>
-            <RGBCubeVisualizer mode="saturation" params={saturationParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} />
-          </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
             <div className="text-muted-foreground mt-2 text-xs">
@@ -512,10 +526,6 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               Hue rotation is a 3D rotation in RGB color space around the gray axis.
             </p>
           </div>
-          <Card className="p-4 border-border bg-card">
-            <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube Rotation</h4>
-            <RGBCubeVisualizer mode="hue" params={hueParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} />
-          </Card>
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
             <div className="text-muted-foreground mt-2 text-xs">

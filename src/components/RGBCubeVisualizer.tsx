@@ -24,6 +24,8 @@ interface RGBCubeVisualizerProps {
   // Optional instance-based pipeline visualization
   pipeline?: FilterInstance[];
   selectedInstanceId?: string;
+  // Visibility hint: when false, keep mounted but skip redraws
+  isVisible?: boolean;
 }
 
 const clamp = (v: number, min = 0, max = 255) => Math.max(min, Math.min(max, v));
@@ -112,7 +114,7 @@ function drawArrow(
   ctx.fill();
 }
 
-export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllChanges, lastChange, transformOrder, hasImage, pipeline, selectedInstanceId }: RGBCubeVisualizerProps) {
+export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllChanges, lastChange, transformOrder, hasImage, pipeline, selectedInstanceId, isVisible = true }: RGBCubeVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [yaw, setYaw] = useState<number>(-35);
   const [pitch, setPitch] = useState<number>(20);
@@ -267,6 +269,7 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
   }
 
   useEffect(() => {
+    if (!hasImage || isVisible === false) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
@@ -285,7 +288,63 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
 
     const original = selectedRGB ?? { r: 200, g: 150, b: 100 };
 
-    const transformed = mode === 'all' ? computePipelineTransformed(original) : computeTransformedFor(original, mode);
+    // For single-mode views, green vector = output from the step immediately BEFORE
+    // the current filter; magenta = result of applying ONLY the current filter to that base.
+    let baseForMode = original;
+    let transformed = original;
+    if (mode === 'all') {
+      transformed = computePipelineTransformed(original);
+    } else {
+      if (pipeline && pipeline.length > 0) {
+        // Prefer an instance that matches the current mode. If the selected instance is of another kind,
+        // fall back to the latest enabled instance of this mode so the tab shows immediately relevant state.
+        const selectedIdx = selectedInstanceId ? pipeline.findIndex(p => p.id === selectedInstanceId) : -1;
+        const selectedMatchesMode = selectedIdx !== -1 && (pipeline[selectedIdx].kind as Mode) === mode;
+        const idx = selectedMatchesMode
+          ? selectedIdx
+          : (() => {
+              // choose the last enabled instance of this mode
+              for (let i = pipeline.length - 1; i >= 0; i--) {
+                const inst = pipeline[i];
+                if (!inst.enabled) continue;
+                if ((inst.kind as Mode) === mode) return i;
+              }
+              return -1;
+            })();
+        if (idx !== -1) {
+          // accumulate up to (but not including) selected
+          let before = original;
+          for (let i = 0; i < idx; i++) {
+            const inst = pipeline[i];
+            if (!inst.enabled) continue;
+            before = computeInstanceStep(before, inst);
+          }
+          baseForMode = before;
+          // apply only the selected instance to get transformed
+          transformed = computeInstanceStep(before, pipeline[idx]);
+        } else {
+          // fallback to param order if selected not found
+          if (transformOrder && transformOrder.length > 0) {
+            const order = transformOrder as Exclude<Mode,'all'>[];
+            for (const step of order) {
+              if (step === mode) break;
+              baseForMode = computeTransformedFor(baseForMode, step);
+            }
+          }
+          transformed = computeTransformedFor(baseForMode, mode);
+        }
+      } else {
+        // legacy param-based fallback
+        if (transformOrder && transformOrder.length > 0) {
+          const order = transformOrder as Exclude<Mode,'all'>[];
+          for (const step of order) {
+            if (step === mode) break;
+            baseForMode = computeTransformedFor(baseForMode, step);
+          }
+        }
+        transformed = computeTransformedFor(baseForMode, mode);
+      }
+    }
 
     const rp = (x: number, y: number, z: number) => {
       const cx = 127.5, cy = 127.5, cz = 127.5;
@@ -333,7 +392,7 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
     ctx.fillText("G", pGaxis.x - 10, pGaxis.y);
     ctx.fillText("B", pBaxis.x, pBaxis.y - 10);
 
-    const p0 = rp(original.r, original.g, original.b);
+    const p0 = rp((mode === 'all' ? original : baseForMode).r, (mode === 'all' ? original : baseForMode).g, (mode === 'all' ? original : baseForMode).b);
     const p1 = rp(transformed.r, transformed.g, transformed.b);
 
     // Original vector (dashed)
@@ -343,55 +402,9 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
     // Transformed vector (always show, including 'all')
     drawArrow(ctx, origin2d, p1, arrowB, 2, 8);
 
-    function drawAuxForMode(activeMode: Mode) {
-      const activeTransformed = computeTransformedFor(original, activeMode);
-      const activeP1 = rp(activeTransformed.r, activeTransformed.g, activeTransformed.b);
-      ctx.strokeStyle = auxColor;
-      if (activeMode === 'brightness') {
-        drawArrow(ctx, p0, activeP1, auxColor, 2, 8);
-      } else if (activeMode === 'contrast') {
-        const mid = rp(128, 128, 128);
-        ctx.lineWidth = 1.5;
-        line(ctx, mid, p0);
-        drawArrow(ctx, mid, activeP1, auxColor, 2, 8);
-      } else if (activeMode === 'saturation' || activeMode === 'vibrance') {
-        const linear = params.linearSaturation ?? false;
-        const wR = linear ? 0.2126 : 0.299;
-        const wG = linear ? 0.7152 : 0.587;
-        const wB = linear ? 0.0722 : 0.114;
-        const gray = wR * original.r + wG * original.g + wB * original.b;
-        const grayPt = rp(gray, gray, gray);
-        ctx.lineWidth = 1.5;
-        line(ctx, grayPt, p0);
-        drawArrow(ctx, grayPt, activeP1, auxColor, 2, 8);
-      } else if (activeMode === 'hue') {
-        // Arc around gray axis in 2D projection
-        const v0x = p0.x - origin2d.x, v0y = p0.y - origin2d.y;
-        const v1x = activeP1.x - origin2d.x, v1y = activeP1.y - origin2d.y;
-        const a0 = Math.atan2(v0y, v0x);
-        const a1 = Math.atan2(v1y, v1x);
-        let delta = a1 - a0;
-        while (delta <= -Math.PI) delta += 2 * Math.PI;
-        while (delta > Math.PI) delta -= 2 * Math.PI;
-        const radius = Math.min(width, height) * 0.12 * zoom;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(origin2d.x, origin2d.y, radius, a0, a0 + delta, delta < 0);
-        ctx.stroke();
-        const endAngle = a0 + delta;
-        const ax = origin2d.x + radius * Math.cos(endAngle);
-        const ay = origin2d.y + radius * Math.sin(endAngle);
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        ctx.lineTo(ax - 6 * Math.cos(endAngle - Math.PI / 6), ay - 6 * Math.sin(endAngle - Math.PI / 6));
-        ctx.lineTo(ax - 6 * Math.cos(endAngle + Math.PI / 6), ay - 6 * Math.sin(endAngle + Math.PI / 6));
-        ctx.closePath();
-        ctx.fillStyle = auxColor;
-        ctx.fill();
-      }
-    }
+    // remove drawAuxForMode: we'll draw a single cyan guide per view below
 
-    // Auxiliary depiction
+    // Auxiliary depiction: exactly one cyan vector per render
     ctx.strokeStyle = auxColor;
     if (mode === 'all' && pipeline && selectedInstanceId) {
       const idx = pipeline.findIndex(p => p.id === selectedInstanceId);
@@ -409,47 +422,11 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
         const pAfter = rp(after.r, after.g, after.b);
         drawArrow(ctx, pBefore, pAfter, auxColor, 2, 8);
       }
-    } else if (lastChange) {
-      const step = lastChange as Exclude<Mode,'all'>;
-      // Compute the state before the last change: full pipeline with previous value for lastChange, current for all others
-      const prevParams = prevParamsRef.current;
-      const beforeParams = { ...params };
-      if (step === 'brightness') (beforeParams as any).brightness = prevParams.brightness ?? 0;
-      else if (step === 'contrast') (beforeParams as any).contrast = prevParams.contrast ?? 1;
-      else if (step === 'saturation') (beforeParams as any).saturation = prevParams.saturation ?? 1;
-      else if (step === 'vibrance') (beforeParams as any).vibrance = prevParams.vibrance ?? 0;
-      else if (step === 'hue') (beforeParams as any).hue = prevParams.hue ?? 0;
-
-      // Compute the input to the last-changed step by applying all transforms that come before it in the pipeline
-      const order: Exclude<Mode, 'all'>[] = (transformOrder ?? ['brightness','contrast','saturation','vibrance','hue']) as Exclude<Mode,'all'>[];
-      let before = original;
-      // Apply all transforms up to (but not including) the last-changed step, using current params (since those haven't changed)
-      for (const s of order) {
-        if (s === step) break;
-        before = computeTransformedFor(before, s, params);
-      }
-      
-      // Compute the full pipeline result with beforeParams (old value for step) - this is where we were before the change
-      const fullBefore = computePipelineWithParams(beforeParams, original);
-      // Compute the full pipeline result with current params - this is where we are now (the edited pixel value)
-      const fullAfter = mode === 'all' ? transformed : computePipelineTransformed(original);
-      
-      // The update vector should show the transform effect, but we want it to terminate at the edited pixel value
-      // So compute what the step does from the "before" input point
-      const stepAfter = computeTransformedFor(before, step, params);
-      
-      // Use fullBefore as the starting point for vectors that need it (contrast, saturation), but stepAfter might not equal fullAfter
-      // Actually, let's show the vector from before->stepAfter, but then we also need to show where it ends up in the full pipeline
-      // Actually, I think the issue is simpler: the vector should terminate at fullAfter (the edited pixel value)
-      
-      // For most transforms, show from before->fullAfter, but positioned correctly
-      // For transforms that have specific guides (contrast mid-point, saturation gray), use those guides but ensure termination
-      
-      const pBefore = rp(before.r, before.g, before.b);
-      const pFullAfter = rp(fullAfter.r, fullAfter.g, fullAfter.b);
-      if (step === 'hue') {
-        const v0x = pBefore.x - origin2d.x, v0y = pBefore.y - origin2d.y;
-        const v1x = pFullAfter.x - origin2d.x, v1y = pFullAfter.y - origin2d.y;
+    } else if (mode !== 'all') {
+      // Always draw a single cyan guide from base (green) to transformed (magenta)
+      if (mode === 'hue') {
+        const v0x = p0.x - origin2d.x, v0y = p0.y - origin2d.y;
+        const v1x = p1.x - origin2d.x, v1y = p1.y - origin2d.y;
         const a0 = Math.atan2(v0y, v0x);
         const a1 = Math.atan2(v1y, v1x);
         let delta = a1 - a0;
@@ -470,31 +447,28 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
         ctx.closePath();
         ctx.fillStyle = auxColor;
         ctx.fill();
-      } else if (step === 'contrast') {
+      } else if (mode === 'contrast') {
         const mid = rp(128, 128, 128);
         ctx.lineWidth = 1.5;
-        drawArrow(ctx, mid, pFullAfter, auxColor, 2, 8);
-      } else if (step === 'saturation' || step === 'vibrance') {
+        drawArrow(ctx, mid, p1, auxColor, 2, 8);
+      } else if (mode === 'saturation' || mode === 'vibrance') {
         const linear = params.linearSaturation ?? false;
         const wR = linear ? 0.2126 : 0.299;
         const wG = linear ? 0.7152 : 0.587;
         const wB = linear ? 0.0722 : 0.114;
-        const grayBefore = wR * before.r + wG * before.g + wB * before.b;
-        const grayPt = rp(grayBefore, grayBefore, grayBefore);
+        const gray = wR * (mode === 'saturation' ? baseForMode.r : baseForMode.r) + wG * (mode === 'saturation' ? baseForMode.g : baseForMode.g) + wB * (mode === 'saturation' ? baseForMode.b : baseForMode.b);
+        const grayPt = rp(gray, gray, gray);
         ctx.lineWidth = 1.5;
-        drawArrow(ctx, grayPt, pFullAfter, auxColor, 2, 8);
+        drawArrow(ctx, grayPt, p1, auxColor, 2, 8);
       } else {
-        // brightness: simple arrow from before to the edited pixel value
-        drawArrow(ctx, pBefore, pFullAfter, auxColor, 2, 8);
+        drawArrow(ctx, p0, p1, auxColor, 2, 8);
       }
-    } else if (mode !== 'all') {
-      drawAuxForMode(mode as Exclude<Mode, 'all'>);
     }
 
     // Update previous params snapshot after rendering
     prevParamsRef.current = { ...params };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, paramsBrightness, paramsContrast, paramsSaturation, paramsVibrance, paramsHue, paramsLinearSaturation, selectedRGB, yaw, pitch, zoom, showAllChanges, lastChange, transformOrder, hasImage, pipeline, selectedInstanceId]);
+  }, [mode, paramsBrightness, paramsContrast, paramsSaturation, paramsVibrance, paramsHue, paramsLinearSaturation, selectedRGB, yaw, pitch, zoom, showAllChanges, lastChange, transformOrder, hasImage, pipeline, selectedInstanceId, isVisible]);
 
   useEffect(() => {
     // Only set up event listeners when we have an image (canvas exists)
