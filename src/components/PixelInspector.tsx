@@ -167,33 +167,17 @@ export function PixelInspector({
             <p className="text-xs text-muted-foreground">Position: ({x}, {y})</p>
           </div>
 
-          {/* Pipeline Order Indicator */}
-          <div className="space-y-1 text-xs border-b border-border pb-2">
-            <div className="text-muted-foreground">Pipeline Order:</div>
-            <div className="flex items-center gap-1 text-primary font-mono flex-wrap">
-              {transformOrder.map((type, idx) => (
-                <span key={type}>
-                  {getTransformLabel(type)}
-                  {idx < transformOrder.length - 1 && ' → '}
-                </span>
-              ))}
-            </div>
-          </div>
-
           {/* Original Color */}
           <div className="space-y-1">
             <div className="text-xs font-medium text-foreground">Original RGB</div>
             <div className="flex items-center gap-2">
               <div
-                className="w-8 h-8 rounded border border-border"
+                className="w-6 h-6 rounded border border-border"
                 style={{ backgroundColor: rgbToHex(originalRGB.r, originalRGB.g, originalRGB.b) }}
               />
               <div className="text-xs font-mono text-muted-foreground">
                 {formatRGB(originalRGB)}
               </div>
-            </div>
-            <div className="text-xs font-mono text-muted-foreground">
-              {rgbToHex(originalRGB.r, originalRGB.g, originalRGB.b)}
             </div>
           </div>
 
@@ -236,15 +220,12 @@ export function PixelInspector({
             </div>
             <div className="flex items-center gap-2">
               <div
-                className="w-8 h-8 rounded border border-border"
+                className="w-6 h-6 rounded border border-border"
                 style={{ backgroundColor: rgbToHex(transformedRGB.r, transformedRGB.g, transformedRGB.b) }}
               />
               <div className="text-xs font-mono text-muted-foreground">
                 {formatRGB(transformedRGB)}
               </div>
-            </div>
-            <div className="text-xs font-mono text-muted-foreground">
-              {rgbToHex(transformedRGB.r, transformedRGB.g, transformedRGB.b)}
             </div>
           </div>
         </CardContent>
