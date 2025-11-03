@@ -1,7 +1,8 @@
 import { Card } from "@/components/ui/card";
 import RGBCubeVisualizer from "@/components/RGBCubeVisualizer";
 import { FilterInstance, TransformationType, BlurParams, SharpenParams, EdgeParams, DenoiseParams } from "@/types/transformations";
-import KernelGrid from "@/components/Convolution/KernelGrid";
+import KernelGrid, { KernelPreview } from "@/components/Convolution/KernelGrid";
+import ProductCube from "@/components/Convolution/ProductCube";
 import { gaussianKernel, boxKernel, sobelKernels, prewittKernels, unsharpKernel } from "@/lib/convolution";
 // Tabs removed; we render sections conditionally based on activeTab
 import { useEffect, useRef, useState, useMemo } from "react";
@@ -28,9 +29,11 @@ interface MathExplanationProps {
   activeTab?: string;
   // Allow updating selected instance params (for kernel type/size, etc.)
   onUpdateInstanceParams?: (id: string, updater: (prev: FilterInstance) => FilterInstance) => void;
+  // Convolution analysis computed on click
+  convAnalysis?: any | null;
 }
 
-export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, pipeline, selectedInstanceId, hasImage, activeTab, onUpdateInstanceParams }: MathExplanationProps) {
+export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, pipeline, selectedInstanceId, hasImage, activeTab, onUpdateInstanceParams, convAnalysis }: MathExplanationProps) {
   const [localLastChange, setLocalLastChange] = useState<'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | undefined>(undefined);
   const prevRef = useRef({ brightness, contrast, saturation, vibrance, hue });
 
@@ -652,6 +655,44 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                   </select>
                 </div>
                 <KernelGrid kernel={k} title={`${p.kind} ${p.size}×${p.size}`} />
+                <div className="mt-2">
+                  <KernelPreview kernel={k} title="Kernel (grayscale)" />
+                </div>
+                {convAnalysis && convAnalysis.kind === 'blur' && convAnalysis.size === p.size && (
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold text-foreground mb-1">Dot products at clicked pixel</div>
+                    <div className="overflow-auto">
+                      <div className="text-[10px] text-muted-foreground mb-1">R channel</div>
+                      <div className="grid" style={{ gridTemplateColumns: `repeat(${p.size}, minmax(0, 1fr))`, gap: '2px' }}>
+                        {convAnalysis.products.r.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                          <div key={`r-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                        )))}
+                      </div>
+                      <div className="mt-2">
+                        <ProductCube title="R 3D" products={convAnalysis.products.r} size={p.size} />
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-2 mb-1">G channel</div>
+                      <div className="grid" style={{ gridTemplateColumns: `repeat(${p.size}, minmax(0, 1fr))`, gap: '2px' }}>
+                        {convAnalysis.products.g.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                          <div key={`g-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                        )))}
+                      </div>
+                      <div className="mt-2">
+                        <ProductCube title="G 3D" products={convAnalysis.products.g} size={p.size} />
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-2 mb-1">B channel</div>
+                      <div className="grid" style={{ gridTemplateColumns: `repeat(${p.size}, minmax(0, 1fr))`, gap: '2px' }}>
+                        {convAnalysis.products.b.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                          <div key={`b-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                        )))}
+                      </div>
+                      <div className="mt-2">
+                        <ProductCube title="B 3D" products={convAnalysis.products.b} size={p.size} />
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-2">Sums: R={convAnalysis.sums.r.toFixed(1)} G={convAnalysis.sums.g.toFixed(1)} B={convAnalysis.sums.b.toFixed(1)}</div>
+                    </div>
+                  </div>
+                )}
               </>
             );
           })()}
@@ -668,10 +709,17 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             const inst = pipeline.find(p => p.id === selectedInstanceId);
             if (!inst) return null;
             const p = inst.params as SharpenParams;
-            const k = p.kernel ?? unsharpKernel(p.amount, p.size);
+            const k = p.kernel ?? (p.kind === 'unsharp' ? unsharpKernel(p.amount, p.size) : p.kind === 'laplacian' ? unsharpKernel(0, 3).map(r=>[...r]) && ((): number[][] => { return [ [0, -p.amount, 0], [-p.amount, 1 + 4 * p.amount, -p.amount], [0, -p.amount, 0] ]; })() : ((): number[][] => { return [ [0, -p.amount, 0], [-p.amount, 1 + 4 * p.amount, -p.amount], [0, -p.amount, 0] ]; })());
             return (
               <>
                 <div className="flex items-center gap-3 text-sm">
+                  <label className="text-muted-foreground">Kind</label>
+                  <select className="border rounded px-2 py-1 bg-card" value={p.kind}
+                    onChange={(e) => onUpdateInstanceParams?.(inst.id, prev => ({ ...prev, params: { ...(prev.params as SharpenParams), kind: e.target.value as 'unsharp'|'laplacian'|'edgeEnhance' } }))}>
+                    <option value="unsharp">Unsharp</option>
+                    <option value="laplacian">Laplacian</option>
+                    <option value="edgeEnhance">Edge Enhance</option>
+                  </select>
                   <label className="text-muted-foreground">Size</label>
                   <select className="border rounded px-2 py-1 bg-card" value={p.size}
                     onChange={(e) => onUpdateInstanceParams?.(inst.id, prev => ({ ...prev, params: { ...(prev.params as SharpenParams), size: Number(e.target.value) as 3|5 } }))}>
@@ -680,6 +728,38 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                   </select>
                 </div>
                 <KernelGrid kernel={k} title={`${p.size}×${p.size} amt ${p.amount.toFixed(2)}`} />
+                <div className="mt-2">
+                  <KernelPreview kernel={k} title="Kernel (grayscale)" />
+                </div>
+                {convAnalysis && convAnalysis.kind === 'sharpen' && convAnalysis.size === p.size && (
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold text-foreground mb-1">Dot products at clicked pixel</div>
+                    <div className="overflow-auto">
+                      <div className="text-[10px] text-muted-foreground mb-1">R channel</div>
+                      <div className="grid" style={{ gridTemplateColumns: `repeat(${p.size}, minmax(0, 1fr))`, gap: '2px' }}>
+                        {convAnalysis.products.r.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                          <div key={`r-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                        )))}
+                      </div>
+                      <div className="mt-2"><ProductCube title="R 3D" products={convAnalysis.products.r} size={p.size} /></div>
+                      <div className="text-[10px] text-muted-foreground mt-2 mb-1">G channel</div>
+                      <div className="grid" style={{ gridTemplateColumns: `repeat(${p.size}, minmax(0, 1fr))`, gap: '2px' }}>
+                        {convAnalysis.products.g.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                          <div key={`g-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                        )))}
+                      </div>
+                      <div className="mt-2"><ProductCube title="G 3D" products={convAnalysis.products.g} size={p.size} /></div>
+                      <div className="text-[10px] text-muted-foreground mt-2 mb-1">B channel</div>
+                      <div className="grid" style={{ gridTemplateColumns: `repeat(${p.size}, minmax(0, 1fr))`, gap: '2px' }}>
+                        {convAnalysis.products.b.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                          <div key={`b-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                        )))}
+                      </div>
+                      <div className="mt-2"><ProductCube title="B 3D" products={convAnalysis.products.b} size={p.size} /></div>
+                      <div className="text-[10px] text-muted-foreground mt-2">Sums: R={convAnalysis.sums.r.toFixed(1)} G={convAnalysis.sums.g.toFixed(1)} B={convAnalysis.sums.b.toFixed(1)}</div>
+                    </div>
+                  </div>
+                )}
               </>
             );
           })()}
@@ -724,6 +804,31 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                   <KernelGrid kernel={kx} title={`${p.operator} – X`} />
                   <KernelGrid kernel={ky} title={`${p.operator} – Y`} />
                 </div>
+                <div className="mt-2 flex gap-2">
+                  <KernelPreview kernel={kx} title="X (grayscale)" />
+                  <KernelPreview kernel={ky} title="Y (grayscale)" />
+                </div>
+                {convAnalysis && convAnalysis.kind === 'edge' && (
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold text-foreground mb-1">Dot products at clicked pixel</div>
+                    <div className="overflow-auto">
+                      <div className="text-[10px] text-muted-foreground mb-1">X products</div>
+                      <div className="grid" style={{ gridTemplateColumns: `repeat(3, minmax(0, 1fr))`, gap: '2px' }}>
+                        {convAnalysis.products.x.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                          <div key={`x-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                        )))}
+                      </div>
+                      <div className="mt-2"><ProductCube title="X 3D" products={convAnalysis.products.x} size={3} /></div>
+                      <div className="text-[10px] text-muted-foreground mt-2 mb-1">Y products</div>
+                      <div className="grid" style={{ gridTemplateColumns: `repeat(3, minmax(0, 1fr))`, gap: '2px' }}>
+                        {convAnalysis.products.y.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                          <div key={`y-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                        )))}
+                      </div>
+                      <div className="mt-2"><ProductCube title="Y 3D" products={convAnalysis.products.y} size={3} /></div>
+                    </div>
+                  </div>
+                )}
               </>
             );
           })()}
@@ -760,6 +865,38 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                     </select>
                   </div>
                   <KernelGrid kernel={k} title={`Mean ${p.size}×${p.size}`} />
+                  <div className="mt-2">
+                    <KernelPreview kernel={k} title="Kernel (grayscale)" />
+                  </div>
+                  {convAnalysis && convAnalysis.kind === 'denoise' && convAnalysis.size === p.size && (
+                    <div className="mt-3">
+                      <div className="text-xs font-semibold text-foreground mb-1">Dot products at clicked pixel</div>
+                      <div className="overflow-auto">
+                        <div className="text-[10px] text-muted-foreground mb-1">R channel</div>
+                        <div className="grid" style={{ gridTemplateColumns: `repeat(${p.size}, minmax(0, 1fr))`, gap: '2px' }}>
+                          {convAnalysis.products.r.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                            <div key={`r-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                          )))}
+                        </div>
+                        <div className="mt-2"><ProductCube title="R 3D" products={convAnalysis.products.r} size={p.size} /></div>
+                        <div className="text-[10px] text-muted-foreground mt-2 mb-1">G channel</div>
+                        <div className="grid" style={{ gridTemplateColumns: `repeat(${p.size}, minmax(0, 1fr))`, gap: '2px' }}>
+                          {convAnalysis.products.g.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                            <div key={`g-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                          )))}
+                        </div>
+                        <div className="mt-2"><ProductCube title="G 3D" products={convAnalysis.products.g} size={p.size} /></div>
+                        <div className="text-[10px] text-muted-foreground mt-2 mb-1">B channel</div>
+                        <div className="grid" style={{ gridTemplateColumns: `repeat(${p.size}, minmax(0, 1fr))`, gap: '2px' }}>
+                          {convAnalysis.products.b.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                            <div key={`b-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                          )))}
+                        </div>
+                        <div className="mt-2"><ProductCube title="B 3D" products={convAnalysis.products.b} size={p.size} /></div>
+                        <div className="text-[10px] text-muted-foreground mt-2">Sums: R={convAnalysis.sums.r.toFixed(1)} G={convAnalysis.sums.g.toFixed(1)} B={convAnalysis.sums.b.toFixed(1)}</div>
+                      </div>
+                    </div>
+                  )}
                 </>
               );
             }

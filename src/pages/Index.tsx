@@ -37,6 +37,7 @@ export default function Index(_props: IndexProps) {
   const [selectedRGB, setSelectedRGB] = useState<RGB | null>(null);
   const [activeTab, setActiveTab] = useState<string>('brightness');
   const [previewOriginal, setPreviewOriginal] = useState(false);
+  const [convAnalysis, setConvAnalysis] = useState<any | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const CanvasAny = ImageCanvas as any;
   const MathAny = MathExplanation as any;
@@ -116,7 +117,7 @@ export default function Index(_props: IndexProps) {
                     </Button>
                     <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                   </div>
-                </div> : <div className="aspect-video w-full overflow-hidden"><CanvasAny image={image} pipeline={_props.pipeline} onSelectInstance={_props.setSelectedInstanceId} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} linearSaturation={linearSaturation} vibrance={vibrance} transformOrder={transformOrder} onPixelSelect={setSelectedRGB} previewOriginal={previewOriginal} /></div>}
+                </div> : <div className="aspect-video w-full overflow-hidden"><CanvasAny image={image} pipeline={_props.pipeline} onSelectInstance={_props.setSelectedInstanceId} selectedInstanceId={_props.selectedInstanceId ?? null} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} linearSaturation={linearSaturation} vibrance={vibrance} transformOrder={transformOrder} onPixelSelect={setSelectedRGB} onSelectConvAnalysis={setConvAnalysis} previewOriginal={previewOriginal} /></div>}
             </Card>
 
             <Card className="p-6 border-border bg-card">
@@ -160,11 +161,8 @@ export default function Index(_props: IndexProps) {
                     }
                     if (kind === 'denoise') {
                       const p = prev.params as DenoiseParams;
-                      const size = ((): 3|5|7 => {
-                        const v = Math.round(Number(nextValue));
-                        if (v <= 4) return 3; if (v <= 6) return 5; return 7;
-                      })();
-                      return { ...prev, params: { ...p, size } };
+                      const strength = Math.max(0, Math.min(1, Number(nextValue)));
+                      return { ...prev, params: { ...p, strength } };
                     }
                     return { ...prev, params: { value: nextValue } };
                   });
@@ -210,6 +208,7 @@ export default function Index(_props: IndexProps) {
               selectedInstanceId={_props.selectedInstanceId ?? null}
               hasImage={!!image}
               activeTab={activeTab}
+              convAnalysis={convAnalysis}
               onUpdateInstanceParams={_props.pipelineApi?.updateInstanceParams}
             />
           </div>

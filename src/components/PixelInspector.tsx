@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { TransformationType, RGB, FilterKind } from "@/types/transformations";
-import KernelGrid, { KernelPreview } from "@/components/Convolution/KernelGrid";
+// Kernel visuals are shown in MathExplanation; inspector shows neighborhood pixels and result only.
 
 interface PixelInspectorProps {
   x: number;
@@ -21,6 +21,7 @@ interface PixelInspectorProps {
   cursorY: number;
   linearSaturation?: boolean;
   activeConv?: { kind: 'blur' | 'sharpen' | 'edge' | 'denoise'; kernel?: number[][]; edgeKernels?: { kx: number[][]; ky: number[][] }; padding: 'zero' | 'reflect' | 'edge' };
+  convWindow?: { size: number; pixels: RGB[][] };
 }
 
 export function PixelInspector({
@@ -41,6 +42,7 @@ export function PixelInspector({
   cursorY,
   linearSaturation = false,
   activeConv,
+  convWindow,
 }: PixelInspectorProps) {
   const rgbToHex = (r: number, g: number, b: number) => {
     return `#${[r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
@@ -259,15 +261,19 @@ export function PixelInspector({
         {activeConv && (
           <Card className="shadow-lg border-primary/20">
             <CardContent className="p-3 space-y-2">
-              <div className="text-xs font-semibold text-primary">Kernel</div>
-              {activeConv.kernel && <KernelGrid kernel={activeConv.kernel} />}
-              {!activeConv.kernel && activeConv.edgeKernels && (
-                <div className="flex gap-2">
-                  <KernelGrid kernel={activeConv.edgeKernels.kx} title="X" />
-                  <KernelGrid kernel={activeConv.edgeKernels.ky} title="Y" />
+              <div className="text-[10px] text-muted-foreground">Padding: {activeConv.padding}</div>
+              {/* Neighborhood pixels under the kernel */}
+              {convWindow && (
+                <div className="mt-1 space-y-1">
+                  <div className="text-xs font-semibold text-primary">Neighborhood</div>
+                  <div className="inline-grid" style={{ gridTemplateColumns: `repeat(${convWindow.size}, minmax(0, 1fr))`, gap: '2px' }}>
+                    {convWindow.pixels.flatMap((row, ri) => row.map((pix, ci) => {
+                      const hex = `#${[pix.r, pix.g, pix.b].map(v => Math.round(v).toString(16).padStart(2,'0')).join('')}`;
+                      return <div key={`${ri}-${ci}`} className="w-4 h-4 rounded border border-border" style={{ backgroundColor: hex }} />;
+                    }))}
+                  </div>
                 </div>
               )}
-              <div className="text-[10px] text-muted-foreground">Padding: {activeConv.padding}</div>
               {/* Resulting pixel from the active convolution step */}
               {Array.isArray(steps) && steps.length > 0 && (() => {
                 const convKinds = new Set(['blur','sharpen','edge','denoise']);
@@ -285,19 +291,6 @@ export function PixelInspector({
                   </div>
                 );
               })()}
-
-              {/* Grayscale image of kernel */}
-              {activeConv.kernel && (
-                <div className="mt-2">
-                  <KernelPreview kernel={activeConv.kernel} title="Kernel (grayscale)" />
-                </div>
-              )}
-              {activeConv.edgeKernels && (
-                <div className="mt-2 flex gap-2">
-                  <KernelPreview kernel={activeConv.edgeKernels.kx} title="X (grayscale)" />
-                  <KernelPreview kernel={activeConv.edgeKernels.ky} title="Y (grayscale)" />
-                </div>
-              )}
             </CardContent>
           </Card>
         )}

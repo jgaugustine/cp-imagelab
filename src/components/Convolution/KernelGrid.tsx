@@ -37,7 +37,8 @@ export const KernelPreview: React.FC<KernelPreviewProps> = ({ kernel, scale = 16
   const height = size * scale;
   const min = Math.min(...kernel.flat());
   const max = Math.max(...kernel.flat());
-  const range = max - min || 1;
+  const isConstant = Math.abs(max - min) < 1e-12;
+  const range = isConstant ? 1 : (max - min);
   return (
     <div className="inline-block">
       {title && <div className="text-xs text-muted-foreground mb-1">{title}</div>}
@@ -51,7 +52,7 @@ export const KernelPreview: React.FC<KernelPreviewProps> = ({ kernel, scale = 16
           for (let y = 0; y < size; y++) {
             for (let x = 0; x < size; x++) {
               const v = kernel[y][x];
-              const t = (v - min) / range; // 0..1
+              const t = isConstant ? 0.5 : (v - min) / range; // use mid-gray for constant kernels
               const g = Math.max(0, Math.min(255, Math.round(t * 255)));
               ctx.fillStyle = `rgb(${g},${g},${g})`;
               ctx.fillRect(x * scale, y * scale, scale, scale);

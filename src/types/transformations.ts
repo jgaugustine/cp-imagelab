@@ -34,11 +34,12 @@ export type BlurParams = {
 };
 
 export type SharpenParams = {
-  amount: number;
-  size: 3 | 5;
+  kind: 'unsharp' | 'laplacian' | 'edgeEnhance';
+  amount: number; // strength; interpreted per kind
+  size: 3 | 5; // for unsharp; laplacian/edgeEnhance typically 3
   stride?: number;
   padding?: 'zero' | 'reflect' | 'edge';
-  kernel?: number[][];
+  kernel?: number[][]; // optional custom kernel override
 };
 
 export type EdgeParams = {
@@ -52,6 +53,7 @@ export type EdgeParams = {
 export type DenoiseParams = {
   kind: 'median' | 'mean';
   size: 3 | 5 | 7;
+  strength?: number; // 0..1 blend toward filtered result (mean/median)
   stride?: number;
   padding?: 'zero' | 'reflect' | 'edge';
 };
@@ -88,11 +90,11 @@ export function defaultParamsFor(kind: FilterKind): FilterParams {
     case 'blur':
       return { kind: 'gaussian', size: 5, sigma: 1.0, stride: 1, padding: 'edge' } as BlurParams;
     case 'sharpen':
-      return { amount: 1.0, size: 3, stride: 1, padding: 'edge' } as SharpenParams;
+      return { kind: 'unsharp', amount: 1.0, size: 3, stride: 1, padding: 'edge' } as SharpenParams;
     case 'edge':
       return { operator: 'sobel', size: 3, combine: 'magnitude', stride: 1, padding: 'edge' } as EdgeParams;
     case 'denoise':
-      return { kind: 'mean', size: 3, stride: 1, padding: 'edge' } as DenoiseParams;
+      return { kind: 'mean', size: 3, strength: 0.5, stride: 1, padding: 'edge' } as DenoiseParams;
   }
 }
 
@@ -122,7 +124,7 @@ export function formatValueFor(kind: FilterKind, params: FilterParams): string {
   if (kind === 'sharpen') {
     const p = params as SharpenParams;
     const s = p.stride ?? 1;
-    return `amt ${p.amount.toFixed(2)} ${p.size}×${p.size} s${s}`;
+    return `${p.kind} ${p.amount.toFixed(2)} ${p.size}×${p.size} s${s}`;
   }
   if (kind === 'edge') {
     const p = params as EdgeParams;
@@ -132,7 +134,8 @@ export function formatValueFor(kind: FilterKind, params: FilterParams): string {
   if (kind === 'denoise') {
     const p = params as DenoiseParams;
     const s = p.stride ?? 1;
-    return `${p.kind} ${p.size}×${p.size} s${s}`;
+    const st = p.strength ?? 0.5;
+    return `${p.kind} ${p.size}×${p.size} s${s} k=${st.toFixed(2)}`;
   }
   return '';
 }

@@ -194,7 +194,7 @@ export function TransformationSliders(props: TransformationSlidersProps) {
                     ? { min: 0, max: 5, step: 0.1, defaultValue: 1, formatValue: (v: number) => `${v.toFixed(1)}` }
                     : kind === 'edge'
                     ? { min: 3, max: 5, step: 2, defaultValue: 3, formatValue: (v: number) => `${v}×${v}` }
-                    : /* denoise */ { min: 3, max: 7, step: 2, defaultValue: 3, formatValue: (v: number) => `${v}×${v}` }
+                    : /* denoise strength */ { min: 0, max: 1, step: 0.05, defaultValue: 0.5, formatValue: (v: number) => `k=${v.toFixed(2)}` }
                 );
                 const currentValue = kind === 'vibrance'
                   ? (inst.params as { vibrance: number }).vibrance
@@ -207,7 +207,7 @@ export function TransformationSliders(props: TransformationSlidersProps) {
                   : kind === 'edge'
                   ? (inst.params as EdgeParams).size
                   : kind === 'denoise'
-                  ? (inst.params as DenoiseParams).size
+                  ? ((inst.params as DenoiseParams).strength ?? 0.5)
                   : (inst.params as { value: number }).value;
                 const label = (kind === 'brightness' || kind === 'contrast' || kind === 'saturation' || kind === 'vibrance' || kind === 'hue')
                   ? TRANSFORM_LABELS[kind as TransformationType]

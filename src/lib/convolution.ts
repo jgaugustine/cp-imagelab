@@ -172,13 +172,39 @@ export function unsharpKernel(amount: number, size: 3 | 5): number[][] {
   return k;
 }
 
+export function laplacianKernel(alpha: number): number[][] {
+  // 3x3 Laplacian, scaled by alpha: sharpened = original + alpha * Laplacian(original)
+  // Kernel applied directly acts like: center positive, neighbors negative
+  const a = alpha;
+  return [
+    [0, -a, 0],
+    [-a, 1 + 4 * a, -a],
+    [0, -a, 0]
+  ];
+}
+
+export function edgeEnhanceKernel(alpha: number): number[][] {
+  // Simple edge enhance kernel variant
+  const a = alpha;
+  return [
+    [0, -a, 0],
+    [-a, 1 + 4 * a, -a],
+    [0, -a, 0]
+  ];
+}
+
 export function applyBlur(imageData: ImageData, params: BlurParams): ImageData {
   const kernel = params.kind === 'gaussian' ? gaussianKernel(params.size, params.sigma) : boxKernel(params.size);
   return convolveImageData(imageData, kernel, { stride: params.stride ?? 1, padding: params.padding ?? 'edge', perChannel: true });
 }
 
 export function applySharpen(imageData: ImageData, params: SharpenParams): ImageData {
-  const kernel = params.kernel ?? unsharpKernel(params.amount, params.size);
+  const kernel = params.kernel
+    ?? (params.kind === 'unsharp'
+      ? unsharpKernel(params.amount, params.size)
+      : params.kind === 'laplacian'
+      ? laplacianKernel(params.amount)
+      : edgeEnhanceKernel(params.amount));
   return convolveImageData(imageData, kernel, { stride: params.stride ?? 1, padding: params.padding ?? 'edge', perChannel: true });
 }
 
@@ -213,7 +239,17 @@ export function applyEdge(imageData: ImageData, params: EdgeParams): ImageData {
 export function applyDenoise(imageData: ImageData, params: DenoiseParams): ImageData {
   if (params.kind === 'mean') {
     const kernel = boxKernel(params.size);
-    return convolveImageData(imageData, kernel, { stride: params.stride ?? 1, padding: params.padding ?? 'edge', perChannel: true });
+    const filtered = convolveImageData(imageData, kernel, { stride: params.stride ?? 1, padding: params.padding ?? 'edge', perChannel: true });
+    const k = Math.max(0, Math.min(1, params.strength ?? 0.5));
+    // Blend original and filtered by strength k
+    const out = new ImageData(imageData.width, imageData.height);
+    for (let i = 0; i < imageData.data.length; i += 4) {
+      out.data[i] = clamp255(imageData.data[i] * (1 - k) + filtered.data[i] * k);
+      out.data[i + 1] = clamp255(imageData.data[i + 1] * (1 - k) + filtered.data[i + 1] * k);
+      out.data[i + 2] = clamp255(imageData.data[i + 2] * (1 - k) + filtered.data[i + 2] * k);
+      out.data[i + 3] = imageData.data[i + 3];
+    }
+    return out;
   }
   // median filter
   const { width, height, data } = imageData;

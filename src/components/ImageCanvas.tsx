@@ -9,6 +9,7 @@ interface ImageCanvasProps {
   // New instance-based pipeline (optional until full refactor)
   pipeline?: FilterInstance[];
   onSelectInstance?: (id: string) => void;
+  selectedInstanceId?: string | null;
   brightness: number;
   contrast: number;
   saturation: number;
@@ -22,6 +23,16 @@ interface ImageCanvasProps {
   enableInspector?: boolean;
   // Emit original pixel RGB when user clicks on the canvas
   onPixelSelect?: (rgb: RGB) => void;
+  // Emit convolution analysis (dot products) for selected conv layer on click
+  onSelectConvAnalysis?: (analysis: {
+    kind: 'blur' | 'sharpen' | 'edge' | 'denoise';
+    size: number;
+    kernel?: number[][];
+    edgeKernels?: { kx: number[][]; ky: number[][] };
+    window: { r: number; g: number; b: number }[][];
+    products: { r: number[][]; g: number[][]; b: number[][] } | { x: number[][]; y: number[][]; magnitude?: number[][] };
+    sums?: { r: number; g: number; b: number };
+  }) => void;
   // When true, temporarily show original image (no transforms)
   previewOriginal?: boolean;
 }
@@ -37,6 +48,7 @@ interface InspectorData {
   cursorY: number;
   steps?: { id: string; kind: FilterKind; inputRGB: RGB; outputRGB: RGB }[];
   activeConv?: { kind: 'blur' | 'sharpen' | 'edge' | 'denoise'; kernel?: number[][]; edgeKernels?: { kx: number[][]; ky: number[][] }; padding: 'zero' | 'reflect' | 'edge' };
+  convWindow?: { size: number; pixels: { r: number; g: number; b: number }[][] };
 }
 
 const clamp = (val: number): number => Math.max(0, Math.min(255, val));
@@ -344,7 +356,7 @@ const applyHue = (rgb: RGB, value: number): RGB => {
   return applyMatrix(rgb, matrix);
 };
 
-export function ImageCanvas({ image, pipeline, onSelectInstance, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true, onPixelSelect, previewOriginal = false }: ImageCanvasProps) {
+export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanceId, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true, onPixelSelect, onSelectConvAnalysis, previewOriginal = false }: ImageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [inspectorData, setInspectorData] = useState<InspectorData | null>(null);
   const originalImageDataRef = useRef<ImageData | null>(null);
@@ -684,6 +696,41 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, brightness, con
       }
     }
 
+    // Build neighborhood window pixels for active convolution-backed instance
+    let convWindow: InspectorData['convWindow'] = undefined;
+    if (activeConv && originalImageDataRef.current) {
+      const src = originalImageDataRef.current;
+      const pad: 'zero' | 'reflect' | 'edge' = activeConv.padding;
+      const size = activeConv.kernel ? activeConv.kernel.length : (activeConv.edgeKernels ? 3 : 0);
+      if (size > 0) {
+        const half = Math.floor(size / 2);
+        const padIndexLocal = (i: number, limit: number): number => {
+          if (i >= 0 && i < limit) return i;
+          if (pad === 'zero') return -1;
+          if (pad === 'edge') return i < 0 ? 0 : limit - 1;
+          let idx = i;
+          if (idx < 0) idx = -idx - 1;
+          const period = (limit - 1) * 2;
+          idx = idx % period;
+          if (idx >= limit) idx = period - idx;
+          return idx;
+        };
+        const rows: { r: number; g: number; b: number }[][] = [];
+        for (let wy = -half; wy <= half; wy++) {
+          const row: { r: number; g: number; b: number }[] = [];
+          for (let wx = -half; wx <= half; wx++) {
+            const sx = padIndexLocal(x + wx, src.width);
+            const sy = padIndexLocal(y + wy, src.height);
+            if (sx === -1 || sy === -1) { row.push({ r: 0, g: 0, b: 0 }); continue; }
+            const idxPix = (sy * src.width + sx) * 4;
+            row.push({ r: src.data[idxPix], g: src.data[idxPix + 1], b: src.data[idxPix + 2] });
+          }
+          rows.push(row);
+        }
+        convWindow = { size, pixels: rows };
+      }
+    }
+
     setInspectorData({
       x,
       y,
@@ -694,7 +741,8 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, brightness, con
       cursorX: e.clientX,
       cursorY: e.clientY,
       steps,
-      activeConv
+      activeConv,
+      convWindow
     });
   };
 
@@ -703,7 +751,7 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, brightness, con
   };
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!onPixelSelect || !canvasRef.current || !originalImageDataRef.current) return;
+    if (!canvasRef.current || !originalImageDataRef.current) return;
     const canvas = canvasRef.current;
     const rect = canvas.getBoundingClientRect();
 
@@ -750,7 +798,147 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, brightness, con
       g: originalData[index + 1],
       b: originalData[index + 2],
     };
-    onPixelSelect(rgb);
+    onPixelSelect?.(rgb);
+
+    // Build convolution analysis for selected conv instance (or last conv)
+    if (pipeline && onSelectConvAnalysis) {
+      const targetConv = (selectedInstanceId && pipeline.find(p => p.id === selectedInstanceId && (p.kind === 'blur' || p.kind === 'sharpen' || p.kind === 'edge' || p.kind === 'denoise') && p.enabled))
+        || [...pipeline].reverse().find(p => p.enabled && (p.kind === 'blur' || p.kind === 'sharpen' || p.kind === 'edge' || p.kind === 'denoise'))
+      ;
+      if (targetConv) {
+        const padIndexLocal = (i: number, limit: number, pad: 'zero'|'reflect'|'edge'): number => {
+          if (i >= 0 && i < limit) return i;
+          if (pad === 'zero') return -1;
+          if (pad === 'edge') return i < 0 ? 0 : limit - 1;
+          let idx = i;
+          if (idx < 0) idx = -idx - 1;
+          const period = (limit - 1) * 2;
+          idx = idx % period;
+          if (idx >= limit) idx = period - idx;
+          return idx;
+        };
+        const src = originalImageDataRef.current;
+        if (targetConv.kind === 'blur') {
+          const p = targetConv.params as BlurParams;
+          const kernel = p.kind === 'gaussian' ? gaussianKernel(p.size, p.sigma) : boxKernel(p.size);
+          const size = kernel.length;
+          const half = Math.floor(size / 2);
+          const window: { r: number; g: number; b: number }[][] = [];
+          const pr: number[][] = [], pg: number[][] = [], pb: number[][] = [];
+          let sr = 0, sg = 0, sb = 0;
+          for (let wy = -half, ry = 0; ry < size; wy++, ry++) {
+            const row: { r: number; g: number; b: number }[] = [];
+            pr[ry] = []; pg[ry] = []; pb[ry] = [];
+            for (let wx = -half, rx = 0; rx < size; wx++, rx++) {
+              const sx = padIndexLocal(x + wx, src.width, p.padding ?? 'edge');
+              const sy = padIndexLocal(y + wy, src.height, p.padding ?? 'edge');
+              const w = kernel[ry][rx];
+              if (sx === -1 || sy === -1) {
+                row.push({ r: 0, g: 0, b: 0 });
+                pr[ry][rx] = 0; pg[ry][rx] = 0; pb[ry][rx] = 0;
+                continue;
+              }
+              const idx2 = (sy * src.width + sx) * 4;
+              const R = src.data[idx2], G = src.data[idx2 + 1], B = src.data[idx2 + 2];
+              row.push({ r: R, g: G, b: B });
+              pr[ry][rx] = R * w; pg[ry][rx] = G * w; pb[ry][rx] = B * w;
+              sr += pr[ry][rx]; sg += pg[ry][rx]; sb += pb[ry][rx];
+            }
+            window.push(row);
+          }
+          onSelectConvAnalysis({ kind: 'blur', size, kernel, window, products: { r: pr, g: pg, b: pb }, sums: { r: sr, g: sg, b: sb } });
+        } else if (targetConv.kind === 'sharpen') {
+          const p = targetConv.params as SharpenParams;
+          const kernel = p.kernel ?? unsharpKernel(p.amount, p.size);
+          const size = kernel.length;
+          const half = Math.floor(size / 2);
+          const window: { r: number; g: number; b: number }[][] = [];
+          const pr: number[][] = [], pg: number[][] = [], pb: number[][] = [];
+          let sr = 0, sg = 0, sb = 0;
+          for (let wy = -half, ry = 0; ry < size; wy++, ry++) {
+            const row: { r: number; g: number; b: number }[] = [];
+            pr[ry] = []; pg[ry] = []; pb[ry] = [];
+            for (let wx = -half, rx = 0; rx < size; wx++, rx++) {
+              const sx = padIndexLocal(x + wx, src.width, p.padding ?? 'edge');
+              const sy = padIndexLocal(y + wy, src.height, p.padding ?? 'edge');
+              const w = kernel[ry][rx];
+              if (sx === -1 || sy === -1) {
+                row.push({ r: 0, g: 0, b: 0 });
+                pr[ry][rx] = 0; pg[ry][rx] = 0; pb[ry][rx] = 0;
+                continue;
+              }
+              const idx2 = (sy * src.width + sx) * 4;
+              const R = src.data[idx2], G = src.data[idx2 + 1], B = src.data[idx2 + 2];
+              row.push({ r: R, g: G, b: B });
+              pr[ry][rx] = R * w; pg[ry][rx] = G * w; pb[ry][rx] = B * w;
+              sr += pr[ry][rx]; sg += pg[ry][rx]; sb += pb[ry][rx];
+            }
+            window.push(row);
+          }
+          onSelectConvAnalysis({ kind: 'sharpen', size, kernel, window, products: { r: pr, g: pg, b: pb }, sums: { r: sr, g: sg, b: sb } });
+        } else if (targetConv.kind === 'edge') {
+          const p = targetConv.params as EdgeParams;
+          const { kx, ky } = p.operator === 'sobel' ? sobelKernels() : prewittKernels();
+          const size = 3;
+          const half = 1;
+          const window: { r: number; g: number; b: number }[][] = [];
+          const px: number[][] = [], py: number[][] = [];
+          for (let wy = -half, ry = 0; ry < size; wy++, ry++) {
+            const row: { r: number; g: number; b: number }[] = [];
+            px[ry] = []; py[ry] = [];
+            for (let wx = -half, rx = 0; rx < size; wx++, rx++) {
+              const sx = padIndexLocal(x + wx, src.width, p.padding ?? 'edge');
+              const sy = padIndexLocal(y + wy, src.height, p.padding ?? 'edge');
+              const wxv = kx[ry][rx], wyv = ky[ry][rx];
+              if (sx === -1 || sy === -1) {
+                row.push({ r: 0, g: 0, b: 0 });
+                px[ry][rx] = 0; py[ry][rx] = 0;
+                continue;
+              }
+              const idx2 = (sy * src.width + sx) * 4;
+              const R = src.data[idx2], G = src.data[idx2 + 1], B = src.data[idx2 + 2];
+              row.push({ r: R, g: G, b: B });
+              const gray = 0.299 * R + 0.587 * G + 0.114 * B;
+              px[ry][rx] = gray * wxv;
+              py[ry][rx] = gray * wyv;
+            }
+            window.push(row);
+          }
+          onSelectConvAnalysis({ kind: 'edge', size, edgeKernels: { kx, ky }, window, products: { x: px, y: py } });
+        } else if (targetConv.kind === 'denoise') {
+          const p = targetConv.params as DenoiseParams;
+          if (p.kind === 'mean') {
+            const kernel = boxKernel(p.size);
+            const size = kernel.length;
+            const half = Math.floor(size / 2);
+            const window: { r: number; g: number; b: number }[][] = [];
+            const pr: number[][] = [], pg: number[][] = [], pb: number[][] = [];
+            let sr = 0, sg = 0, sb = 0;
+            for (let wy = -half, ry = 0; ry < size; wy++, ry++) {
+              const row: { r: number; g: number; b: number }[] = [];
+              pr[ry] = []; pg[ry] = []; pb[ry] = [];
+              for (let wx = -half, rx = 0; rx < size; wx++, rx++) {
+                const sx = padIndexLocal(x + wx, src.width, p.padding ?? 'edge');
+                const sy = padIndexLocal(y + wy, src.height, p.padding ?? 'edge');
+                const w = kernel[ry][rx];
+                if (sx === -1 || sy === -1) {
+                  row.push({ r: 0, g: 0, b: 0 });
+                  pr[ry][rx] = 0; pg[ry][rx] = 0; pb[ry][rx] = 0;
+                  continue;
+                }
+                const idx2 = (sy * src.width + sx) * 4;
+                const R = src.data[idx2], G = src.data[idx2 + 1], B = src.data[idx2 + 2];
+                row.push({ r: R, g: G, b: B });
+                pr[ry][rx] = R * w; pg[ry][rx] = G * w; pb[ry][rx] = B * w;
+                sr += pr[ry][rx]; sg += pg[ry][rx]; sb += pb[ry][rx];
+              }
+              window.push(row);
+            }
+            onSelectConvAnalysis({ kind: 'denoise', size, kernel, window, products: { r: pr, g: pg, b: pb }, sums: { r: sr, g: sg, b: sb } });
+          }
+        }
+      }
+    }
   };
 
   return (
