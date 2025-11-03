@@ -17,6 +17,7 @@ interface DraggableSliderCardProps {
   icon: React.ReactNode;
   label: string;
   onClick?: (transformType: TransformationType) => void;
+  isActive?: boolean;
 }
 
 export function DraggableSliderCard({
@@ -31,6 +32,7 @@ export function DraggableSliderCard({
   icon,
   label,
   onClick,
+  isActive,
 }: DraggableSliderCardProps) {
   const {
     attributes,

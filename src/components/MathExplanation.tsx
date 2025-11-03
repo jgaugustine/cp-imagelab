@@ -466,7 +466,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           
         </TabsContent>
 
-        <TabsContent value="hue" className="space-y-4 mt-4" forceMount>
+        <TabsContent value="hue" className="space-y-4 mt-4">
           <div className="space-y-2">
             <div className="text-lg font-semibold text-foreground">Hue</div>
             <h3 className="text-lg font-semibold text-muted-foreground">Rotation Matrix</h3>
@@ -547,7 +547,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           </Card>
         </TabsContent>
 
-        <TabsContent value="all" className="space-y-4 mt-4" forceMount>
+        <TabsContent value="all" className="space-y-4 mt-4">
           <div className="space-y-2">
             <div className="text-lg font-semibold text-foreground">All Changes</div>
             <h3 className="text-lg font-semibold text-muted-foreground">Visualize Composite Changes</h3>
