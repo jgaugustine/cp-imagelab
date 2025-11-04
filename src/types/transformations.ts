@@ -113,8 +113,8 @@ export function formatValueFor(kind: FilterKind, params: FilterParams): string {
     return v >= 0 ? `+${v.toFixed(2)}` : `${v.toFixed(2)}`;
   }
   if (kind === 'hue') {
-    const deg = (params as { hue: number }).hue;
-    return `${deg > 0 ? '+' : ''}${deg}°`;
+  const deg = (params as { hue: number }).hue;
+  return `${deg > 0 ? '+' : ''}${deg}°`;
   }
   if (kind === 'blur') {
     const p = params as BlurParams;

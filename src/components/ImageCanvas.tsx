@@ -35,6 +35,8 @@ interface ImageCanvasProps {
   }) => void;
   // When true, temporarily show original image (no transforms)
   previewOriginal?: boolean;
+  // When true, show the image as 3 separate RGB channel panels
+  dechanneled?: boolean;
 }
 
 interface InspectorData {
@@ -356,8 +358,11 @@ const applyHue = (rgb: RGB, value: number): RGB => {
   return applyMatrix(rgb, matrix);
 };
 
-export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanceId, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true, onPixelSelect, onSelectConvAnalysis, previewOriginal = false }: ImageCanvasProps) {
+export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanceId, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true, onPixelSelect, onSelectConvAnalysis, previewOriginal = false, dechanneled = false }: ImageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rChannelRef = useRef<HTMLCanvasElement>(null);
+  const gChannelRef = useRef<HTMLCanvasElement>(null);
+  const bChannelRef = useRef<HTMLCanvasElement>(null);
   const [inspectorData, setInspectorData] = useState<InspectorData | null>(null);
   const originalImageDataRef = useRef<ImageData | null>(null);
 
@@ -386,7 +391,7 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
   };
 
   useEffect(() => {
-    if (!canvasRef.current || !image) return;
+    if (!canvasRef.current || !image || dechanneled) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d", { willReadFrequently: true });
@@ -414,47 +419,47 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
 
     if (!pipeline) {
       // Legacy path using transformOrder
-      type Step = { type: TransformationType; value: number } | { type: 'vibrance'; value: number };
+    type Step = { type: TransformationType; value: number } | { type: 'vibrance'; value: number };
       const steps: Step[] = transformOrder.map(t => ({ type: t, value: getTransformValue(t) })) as Step[];
-      let i = 0;
-      while (i < steps.length) {
-        const matrixBatch: Array<{ matrix: number[]; offset: number[] } > = [];
-        let batchEnd = i;
-        while (batchEnd < steps.length) {
-          const s = steps[batchEnd];
-          const stype = s.type as TransformationType;
-          const sval = (s as any).value as number;
-          const isPerPixel = stype === 'vibrance' || (stype === 'saturation' && linearSaturation);
-          if (isPerPixel) break;
-          if (stype === 'brightness') matrixBatch.push(buildBrightnessMatrix(sval));
-          else if (stype === 'contrast') matrixBatch.push(buildContrastMatrix(sval));
-          else if (stype === 'saturation') matrixBatch.push({ matrix: buildSaturationMatrix(sval), offset: [0,0,0] });
-          else if (stype === 'hue') matrixBatch.push({ matrix: buildHueMatrix(sval), offset: [0,0,0] });
-          batchEnd++;
-        }
-        if (matrixBatch.length > 0) {
-          const composed = composeAffineTransforms(matrixBatch);
-          applyMatrixToImageData(imageData, composed.matrix, composed.offset);
-          i = batchEnd;
-        } else {
-          const s = steps[i];
-          const stype = s.type as TransformationType;
-          const sval = (s as any).value as number;
-          for (let j = 0; j < data.length; j += 4) {
-            const alpha = data[j + 3];
-            if (alpha === 0) continue;
-            const rgb: RGB = { r: data[j], g: data[j+1], b: data[j+2] };
-            let transformed: RGB = rgb;
-            if (stype === 'vibrance') {
-              transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
-            } else if (stype === 'saturation') {
-              transformed = applySaturationLinear(rgb, sval);
-            }
-            data[j] = transformed.r;
-            data[j+1] = transformed.g;
-            data[j+2] = transformed.b;
+    let i = 0;
+    while (i < steps.length) {
+      const matrixBatch: Array<{ matrix: number[]; offset: number[] } > = [];
+      let batchEnd = i;
+      while (batchEnd < steps.length) {
+        const s = steps[batchEnd];
+        const stype = s.type as TransformationType;
+        const sval = (s as any).value as number;
+        const isPerPixel = stype === 'vibrance' || (stype === 'saturation' && linearSaturation);
+        if (isPerPixel) break;
+        if (stype === 'brightness') matrixBatch.push(buildBrightnessMatrix(sval));
+        else if (stype === 'contrast') matrixBatch.push(buildContrastMatrix(sval));
+        else if (stype === 'saturation') matrixBatch.push({ matrix: buildSaturationMatrix(sval), offset: [0,0,0] });
+        else if (stype === 'hue') matrixBatch.push({ matrix: buildHueMatrix(sval), offset: [0,0,0] });
+        batchEnd++;
+      }
+      if (matrixBatch.length > 0) {
+        const composed = composeAffineTransforms(matrixBatch);
+        applyMatrixToImageData(imageData, composed.matrix, composed.offset);
+        i = batchEnd;
+      } else {
+        const s = steps[i];
+        const stype = s.type as TransformationType;
+        const sval = (s as any).value as number;
+        for (let j = 0; j < data.length; j += 4) {
+          const alpha = data[j + 3];
+          if (alpha === 0) continue;
+          const rgb: RGB = { r: data[j], g: data[j+1], b: data[j+2] };
+          let transformed: RGB = rgb;
+          if (stype === 'vibrance') {
+            transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
+          } else if (stype === 'saturation') {
+            transformed = applySaturationLinear(rgb, sval);
           }
-          i++;
+          data[j] = transformed.r;
+          data[j+1] = transformed.g;
+          data[j+2] = transformed.b;
+        }
+        i++;
         }
       }
     } else {
@@ -509,7 +514,169 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
     }
 
     ctx.putImageData(imageData, 0, 0);
-  }, [image, pipeline, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder, previewOriginal]);
+  }, [image, pipeline, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder, previewOriginal, dechanneled]);
+
+  // Render dechanneled view (3 RGB channel panels)
+  useEffect(() => {
+    if (!dechanneled || !image || !rChannelRef.current || !gChannelRef.current || !bChannelRef.current) return;
+
+    const rCanvas = rChannelRef.current;
+    const gCanvas = gChannelRef.current;
+    const bCanvas = bChannelRef.current;
+    const rCtx = rCanvas.getContext("2d", { willReadFrequently: true });
+    const gCtx = gCanvas.getContext("2d", { willReadFrequently: true });
+    const bCtx = bCanvas.getContext("2d", { willReadFrequently: true });
+    if (!rCtx || !gCtx || !bCtx) return;
+
+    // Set canvas sizes
+    rCanvas.width = image.width;
+    rCanvas.height = image.height;
+    gCanvas.width = image.width;
+    gCanvas.height = image.height;
+    bCanvas.width = image.width;
+    bCanvas.height = image.height;
+
+    // Draw original image to a temporary canvas to get processed image data
+    const tempCanvas = document.createElement("canvas");
+    tempCanvas.width = image.width;
+    tempCanvas.height = image.height;
+    const tempCtx = tempCanvas.getContext("2d", { willReadFrequently: true });
+    if (!tempCtx) return;
+
+    tempCtx.drawImage(image, 0, 0);
+    let imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+    const { data } = imageData;
+
+    // Apply transformations if not previewing original
+    if (!previewOriginal) {
+      if (!pipeline) {
+        // Legacy path using transformOrder
+        type Step = { type: TransformationType; value: number } | { type: 'vibrance'; value: number };
+        const steps: Step[] = transformOrder.map(t => ({ type: t, value: getTransformValue(t) })) as Step[];
+        let i = 0;
+        while (i < steps.length) {
+          const matrixBatch: Array<{ matrix: number[]; offset: number[] } > = [];
+          let batchEnd = i;
+          while (batchEnd < steps.length) {
+            const s = steps[batchEnd];
+            const stype = s.type as TransformationType;
+            const sval = (s as any).value as number;
+            const isPerPixel = stype === 'vibrance' || (stype === 'saturation' && linearSaturation);
+            if (isPerPixel) break;
+            if (stype === 'brightness') matrixBatch.push(buildBrightnessMatrix(sval));
+            else if (stype === 'contrast') matrixBatch.push(buildContrastMatrix(sval));
+            else if (stype === 'saturation') matrixBatch.push({ matrix: buildSaturationMatrix(sval), offset: [0,0,0] });
+            else if (stype === 'hue') matrixBatch.push({ matrix: buildHueMatrix(sval), offset: [0,0,0] });
+            batchEnd++;
+          }
+          if (matrixBatch.length > 0) {
+            const composed = composeAffineTransforms(matrixBatch);
+            applyMatrixToImageData(imageData, composed.matrix, composed.offset);
+            i = batchEnd;
+          } else {
+            const s = steps[i];
+            const stype = s.type as TransformationType;
+            const sval = (s as any).value as number;
+            for (let j = 0; j < data.length; j += 4) {
+              const alpha = data[j + 3];
+              if (alpha === 0) continue;
+              const rgb: RGB = { r: data[j], g: data[j+1], b: data[j+2] };
+              let transformed: RGB = rgb;
+              if (stype === 'vibrance') {
+                transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
+              } else if (stype === 'saturation') {
+                transformed = applySaturationLinear(rgb, sval);
+              }
+              data[j] = transformed.r;
+              data[j+1] = transformed.g;
+              data[j+2] = transformed.b;
+            }
+            i++;
+          }
+        }
+      } else {
+        // Instance-based path
+        for (const inst of pipeline) {
+          if (!inst.enabled) continue;
+          if (inst.kind === 'brightness' || inst.kind === 'contrast' || inst.kind === 'saturation' || inst.kind === 'hue' || inst.kind === 'vibrance') {
+            const kind = inst.kind;
+            if (kind === 'brightness' || kind === 'contrast' || (kind === 'saturation' && !linearSaturation) || kind === 'hue') {
+              const batch: Array<{ matrix: number[]; offset: number[] }> = [];
+              if (kind === 'brightness') batch.push(buildBrightnessMatrix((inst.params as { value: number }).value));
+              if (kind === 'contrast') batch.push(buildContrastMatrix((inst.params as { value: number }).value));
+              if (kind === 'saturation' && !linearSaturation) batch.push({ matrix: buildSaturationMatrix((inst.params as { value: number }).value), offset: [0,0,0] });
+              if (kind === 'hue') batch.push({ matrix: buildHueMatrix((inst.params as { hue: number }).hue), offset: [0,0,0] });
+              const composed = composeAffineTransforms(batch);
+              applyMatrixToImageData(imageData, composed.matrix, composed.offset);
+            } else {
+              const sval = kind === 'vibrance' ? (inst.params as { vibrance: number }).vibrance : (inst.params as { value: number }).value;
+              for (let j = 0; j < data.length; j += 4) {
+                const alpha = data[j + 3];
+                if (alpha === 0) continue;
+                const rgb: RGB = { r: data[j], g: data[j+1], b: data[j+2] };
+                let transformed: RGB = rgb;
+                if (kind === 'vibrance') transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
+                if (kind === 'saturation') transformed = applySaturationLinear(rgb, sval);
+                data[j] = transformed.r;
+                data[j+1] = transformed.g;
+                data[j+2] = transformed.b;
+              }
+            }
+          } else if (inst.kind === 'blur') {
+            const p = inst.params as BlurParams;
+            const out = cpuConvolutionBackend.blur(imageData, p);
+            for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+          } else if (inst.kind === 'sharpen') {
+            const p = inst.params as SharpenParams;
+            const out = cpuConvolutionBackend.sharpen(imageData, p);
+            for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+          } else if (inst.kind === 'edge') {
+            const p = inst.params as EdgeParams;
+            const out = cpuConvolutionBackend.edge(imageData, p);
+            for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+          } else if (inst.kind === 'denoise') {
+            const p = inst.params as DenoiseParams;
+            const out = cpuConvolutionBackend.denoise(imageData, p);
+            for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+          }
+        }
+      }
+    }
+
+    // Create channel-specific image data
+    const rData = rCtx.createImageData(image.width, image.height);
+    const gData = gCtx.createImageData(image.width, image.height);
+    const bData = bCtx.createImageData(image.width, image.height);
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const a = data[i + 3];
+
+      // Red channel: show R with red tint but brighter (R, R*0.3, R*0.3)
+      rData.data[i] = r;
+      rData.data[i + 1] = Math.round(r * 0.3);
+      rData.data[i + 2] = Math.round(r * 0.3);
+      rData.data[i + 3] = a;
+
+      // Green channel: show G with green tint but brighter (G*0.3, G, G*0.3)
+      gData.data[i] = Math.round(g * 0.3);
+      gData.data[i + 1] = g;
+      gData.data[i + 2] = Math.round(g * 0.3);
+      gData.data[i + 3] = a;
+
+      // Blue channel: show B with blue tint but brighter (B*0.3, B*0.3, B)
+      bData.data[i] = Math.round(b * 0.3);
+      bData.data[i + 1] = Math.round(b * 0.3);
+      bData.data[i + 2] = b;
+      bData.data[i + 3] = a;
+    }
+
+    rCtx.putImageData(rData, 0, 0);
+    gCtx.putImageData(gData, 0, 0);
+    bCtx.putImageData(bData, 0, 0);
+  }, [dechanneled, image, pipeline, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder, previewOriginal]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!enableInspector) return;
@@ -940,6 +1107,35 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
       }
     }
   };
+
+  if (dechanneled) {
+    // Determine layout based on aspect ratio
+    // Default to 3 columns (grid-cols-3), but use 1 column (grid-rows-3) if image is wide
+    // and would fill the canvas horizontally
+    const imgAspect = image ? image.width / image.height : 1;
+    // Use 1 column (vertical layout) if image is very wide (aspect ratio > 2.5)
+    // This means the image fills the canvas horizontally
+    const useVerticalLayout = imgAspect > 2.5;
+
+    return (
+      <>
+        <div className={`w-full h-full grid ${useVerticalLayout ? 'grid-rows-3' : 'grid-cols-3'} gap-2`}>
+          <canvas
+            ref={rChannelRef}
+            className="w-full h-full object-contain rounded-lg border border-border"
+          />
+          <canvas
+            ref={gChannelRef}
+            className="w-full h-full object-contain rounded-lg border border-border"
+          />
+          <canvas
+            ref={bChannelRef}
+            className="w-full h-full object-contain rounded-lg border border-border"
+          />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

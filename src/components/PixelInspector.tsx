@@ -170,8 +170,8 @@ export function PixelInspector({
       style={{ left: `${left}px`, top: `${top}px` }}
     >
       <div className="flex gap-3 items-start">
-        <Card className="w-80 shadow-lg border-primary/20">
-          <CardContent className="p-4 space-y-3">
+      <Card className="w-80 shadow-lg border-primary/20">
+        <CardContent className="p-4 space-y-3">
           {/* Header */}
           <div className="border-b border-border pb-2">
             <h4 className="text-sm font-semibold text-primary">Pixel Inspector</h4>
@@ -216,24 +216,24 @@ export function PixelInspector({
               </div>
             ) : (
               transformOrder.map((transformType, index) => {
-                if (!shouldShowStep(transformType)) return null;
-                const stepRGB = stepByStep[transformType];
-                return (
-                  <div key={transformType} className="space-y-1">
-                    <div className="text-xs text-primary">
-                      {index + 1}. {getTransformLabel(transformType)} ({getTransformValue(transformType)})
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-6 h-6 rounded border border-border"
-                        style={{ backgroundColor: rgbToHex(stepRGB.r, stepRGB.g, stepRGB.b) }}
-                      />
-                      <div className="text-xs font-mono text-muted-foreground">
-                        {formatRGB(stepRGB)}
-                      </div>
+              if (!shouldShowStep(transformType)) return null;
+              const stepRGB = stepByStep[transformType];
+              return (
+                <div key={transformType} className="space-y-1">
+                  <div className="text-xs text-primary">
+                    {index + 1}. {getTransformLabel(transformType)} ({getTransformValue(transformType)})
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-6 h-6 rounded border border-border"
+                      style={{ backgroundColor: rgbToHex(stepRGB.r, stepRGB.g, stepRGB.b) }}
+                    />
+                    <div className="text-xs font-mono text-muted-foreground">
+                      {formatRGB(stepRGB)}
                     </div>
                   </div>
-                );
+                </div>
+              );
               })
             )}
           </div>
@@ -256,8 +256,8 @@ export function PixelInspector({
               </div>
             </div>
           </div>
-          </CardContent>
-        </Card>
+        </CardContent>
+      </Card>
         {activeConv && (
           <Card className="shadow-lg border-primary/20">
             <CardContent className="p-3 space-y-2">

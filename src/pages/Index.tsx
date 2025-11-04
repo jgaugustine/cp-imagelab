@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload } from "lucide-react";
+import { Upload, Layers } from "lucide-react";
 import { ImageCanvas } from "@/components/ImageCanvas";
 import { MathExplanation } from "@/components/MathExplanation";
 import { TransformationType, RGB, BlurParams, SharpenParams, EdgeParams, DenoiseParams } from "@/types/transformations";
@@ -37,6 +37,7 @@ export default function Index(_props: IndexProps) {
   const [selectedRGB, setSelectedRGB] = useState<RGB | null>(null);
   const [activeTab, setActiveTab] = useState<string>('brightness');
   const [previewOriginal, setPreviewOriginal] = useState(false);
+  const [dechanneled, setDechanneled] = useState(false);
   const [convAnalysis, setConvAnalysis] = useState<any | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const CanvasAny = ImageCanvas as any;
@@ -79,19 +80,28 @@ export default function Index(_props: IndexProps) {
                   <Upload className="w-5 h-5" />
                   Image Preview
                 </h2>
-                {image && (
-                  <div className="flex items-center gap-2">
-                    <Button
-                      className="shrink-0"
-                      variant="outline"
-                      onPointerDown={() => setPreviewOriginal(true)}
-                      onPointerUp={() => setPreviewOriginal(false)}
-                      onPointerLeave={() => setPreviewOriginal(false)}
-                      onBlur={() => setPreviewOriginal(false)}
-                      aria-pressed={previewOriginal}
-                    >
-                      Show Original
-                    </Button>
+            {image && (
+              <div className="flex items-center gap-2">
+                <Button
+                  className="shrink-0"
+                  variant={dechanneled ? "default" : "outline"}
+                  onClick={() => setDechanneled(!dechanneled)}
+                  aria-pressed={dechanneled}
+                >
+                  <Layers className="w-4 h-4 mr-2" />
+                  Dechannel
+                </Button>
+                <Button
+                  className="shrink-0"
+                  variant="outline"
+                  onPointerDown={() => setPreviewOriginal(true)}
+                  onPointerUp={() => setPreviewOriginal(false)}
+                  onPointerLeave={() => setPreviewOriginal(false)}
+                  onBlur={() => setPreviewOriginal(false)}
+                  aria-pressed={previewOriginal}
+                >
+                  Show Original
+                </Button>
                     <Button
                       className="shrink-0"
                       variant="outline"
@@ -117,7 +127,7 @@ export default function Index(_props: IndexProps) {
                     </Button>
                     <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                   </div>
-                </div> : <div className="aspect-video w-full overflow-hidden"><CanvasAny image={image} pipeline={_props.pipeline} onSelectInstance={_props.setSelectedInstanceId} selectedInstanceId={_props.selectedInstanceId ?? null} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} linearSaturation={linearSaturation} vibrance={vibrance} transformOrder={transformOrder} onPixelSelect={setSelectedRGB} onSelectConvAnalysis={setConvAnalysis} previewOriginal={previewOriginal} /></div>}
+                </div> : <div className="aspect-video w-full overflow-hidden"><CanvasAny key={dechanneled ? 'dechanneled' : 'normal'} image={image} pipeline={_props.pipeline} onSelectInstance={_props.setSelectedInstanceId} selectedInstanceId={_props.selectedInstanceId ?? null} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} linearSaturation={linearSaturation} vibrance={vibrance} transformOrder={transformOrder} onPixelSelect={setSelectedRGB} onSelectConvAnalysis={setConvAnalysis} previewOriginal={previewOriginal} dechanneled={dechanneled} /></div>}
             </Card>
 
             <Card className="p-6 border-border bg-card">
