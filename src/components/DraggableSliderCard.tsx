@@ -25,6 +25,7 @@ interface DraggableSliderCardProps {
   onDelete?: (id: string) => void;
   onToggleEnabled?: (id: string) => void;
   onClick?: (transformType: TransformationType) => void;
+  onInstanceClick?: (instanceId: string) => void;
   isActive?: boolean;
 }
 
@@ -45,6 +46,7 @@ export function DraggableSliderCard({
   onDelete,
   onToggleEnabled,
   onClick,
+  onInstanceClick,
   isActive,
 }: DraggableSliderCardProps) {
   const {
@@ -70,7 +72,13 @@ export function DraggableSliderCard({
   };
 
   const handleClick = () => {
-    if (onClick && !isDragging) {
+    if (isDragging) return;
+    // For instance-based pipeline, call onInstanceClick if available
+    if (onInstanceClick && typeof id === 'string') {
+      onInstanceClick(id);
+    }
+    // Also call onClick for legacy compatibility
+    if (onClick) {
       onClick(kind as TransformationType);
     }
   };

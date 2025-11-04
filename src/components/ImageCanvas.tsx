@@ -838,25 +838,25 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
       rgb = color;
     }
 
-    // determine active convolution-backed instance for inspector context (last enabled)
+    // determine active convolution-backed instance for inspector context (only if selectedInstanceId points to a convolution layer)
     let activeConv: InspectorData['activeConv'] | undefined = undefined;
-    if (pipeline) {
-      const lastConv = [...pipeline].reverse().find(p => p.enabled && (p.kind === 'blur' || p.kind === 'sharpen' || p.kind === 'edge' || p.kind === 'denoise'));
-      if (lastConv) {
-        if (lastConv.kind === 'blur') {
-          const p = lastConv.params as BlurParams;
+    if (pipeline && selectedInstanceId) {
+      const selectedConv = pipeline.find(p => p.id === selectedInstanceId && p.enabled && (p.kind === 'blur' || p.kind === 'sharpen' || p.kind === 'edge' || p.kind === 'denoise'));
+      if (selectedConv) {
+        if (selectedConv.kind === 'blur') {
+          const p = selectedConv.params as BlurParams;
           const kernel = p.kind === 'gaussian' ? gaussianKernel(p.size, p.sigma) : boxKernel(p.size);
           activeConv = { kind: 'blur', kernel, padding: (p.padding ?? 'edge') };
-        } else if (lastConv.kind === 'sharpen') {
-          const p = lastConv.params as SharpenParams;
+        } else if (selectedConv.kind === 'sharpen') {
+          const p = selectedConv.params as SharpenParams;
           const kernel = p.kernel ?? unsharpKernel(p.amount, p.size);
           activeConv = { kind: 'sharpen', kernel, padding: (p.padding ?? 'edge') };
-        } else if (lastConv.kind === 'edge') {
-          const p = lastConv.params as EdgeParams;
+        } else if (selectedConv.kind === 'edge') {
+          const p = selectedConv.params as EdgeParams;
           const ek = p.operator === 'sobel' ? sobelKernels() : prewittKernels();
           activeConv = { kind: 'edge', edgeKernels: ek, padding: (p.padding ?? 'edge') };
-        } else if (lastConv.kind === 'denoise') {
-          const p = lastConv.params as DenoiseParams;
+        } else if (selectedConv.kind === 'denoise') {
+          const p = selectedConv.params as DenoiseParams;
           const kernel = p.kind === 'mean' ? boxKernel(p.size) : undefined;
           activeConv = { kind: 'denoise', kernel, padding: (p.padding ?? 'edge') };
         }

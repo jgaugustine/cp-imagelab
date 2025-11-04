@@ -197,6 +197,14 @@ export default function Index(_props: IndexProps) {
                   setLinearSaturation(false);
                 }}
                 onCardClick={(transformType) => setActiveTab(transformType)}
+                onInstanceSelect={(instanceId) => {
+                  _props.setSelectedInstanceId?.(instanceId);
+                  // Also set activeTab based on the instance kind
+                  const instance = _props.pipeline?.find(p => p.id === instanceId);
+                  if (instance) {
+                    setActiveTab(instance.kind);
+                  }
+                }}
                 activeTab={activeTab}
               />
             </Card>

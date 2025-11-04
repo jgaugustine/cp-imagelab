@@ -37,6 +37,7 @@ interface AdjustmentLayerProps {
   setHue: (value: number) => void;
   onResetAll: () => void;
   onCardClick?: (transformType: TransformationType) => void;
+  onInstanceSelect?: (instanceId: string) => void;
   activeTab?: string;
 }
 
@@ -119,6 +120,7 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
     onChangeInstanceParams,
     onResetAll,
     onCardClick,
+    onInstanceSelect,
     activeTab,
     ...rest
   } = props;
@@ -232,6 +234,7 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
                     onDelete={props.onDeleteInstance}
                     onToggleEnabled={props.onToggleInstance}
                     onClick={onCardClick}
+                    onInstanceClick={onInstanceSelect}
                     isActive={activeTab === kind}
                   />
                 );
