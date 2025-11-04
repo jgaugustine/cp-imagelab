@@ -5,7 +5,7 @@ import { Upload } from "lucide-react";
 import { ImageCanvas } from "@/components/ImageCanvas";
 import { MathExplanation } from "@/components/MathExplanation";
 import { TransformationType, RGB, BlurParams, SharpenParams, EdgeParams, DenoiseParams } from "@/types/transformations";
-import { TransformationSliders } from "@/components/TransformationSliders";
+import { AdjustmentLayer } from "@/components/AdjustmentLayer";
 import { downsizeImageToDataURL } from "@/lib/imageResize";
 import { FilterInstance } from "@/types/transformations";
 
@@ -123,7 +123,7 @@ export default function Index(_props: IndexProps) {
             <Card className="p-6 border-border bg-card">
               <h2 className="text-xl font-semibold text-primary mb-6">Transformation Controls</h2>
               
-              <TransformationSliders
+              <AdjustmentLayer
                 transformOrder={transformOrder}
                 onOrderChange={setTransformOrder}
                 pipeline={_props.pipeline}
