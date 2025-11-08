@@ -88,6 +88,184 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
   }, [pipeline, transformOrder]);
   const selectedId = selectedInstanceId ?? undefined;
 
+  type RGBVector = { r: number; g: number; b: number };
+  type VectorStep = {
+    key: string;
+    kind: TransformationType;
+    input: RGBVector;
+    output: RGBVector;
+    value?: number;
+  };
+
+  const baseVector: RGBVector = useMemo(() => ({
+    r: selectedRGB?.r ?? 200,
+    g: selectedRGB?.g ?? 150,
+    b: selectedRGB?.b ?? 100,
+  }), [selectedRGB]);
+
+  const vectorSteps: VectorStep[] = useMemo(() => {
+    const steps: VectorStep[] = [];
+
+    const clamp = (v: number) => Math.max(0, Math.min(255, v));
+    const toLinear = (c: number) => {
+      const x = c / 255;
+      return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4);
+    };
+    const toSRGB = (c: number) => {
+      const y = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+      return y * 255;
+    };
+    const applyBrightnessVec = (rgb: RGBVector, value: number): RGBVector => ({
+      r: clamp(rgb.r + value),
+      g: clamp(rgb.g + value),
+      b: clamp(rgb.b + value),
+    });
+    const applyContrastVec = (rgb: RGBVector, value: number): RGBVector => ({
+      r: clamp((rgb.r - 128) * value + 128),
+      g: clamp((rgb.g - 128) * value + 128),
+      b: clamp((rgb.b - 128) * value + 128),
+    });
+    const applySaturationGamma = (rgb: RGBVector, value: number): RGBVector => {
+      const gray = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+      return {
+        r: clamp(gray + (rgb.r - gray) * value),
+        g: clamp(gray + (rgb.g - gray) * value),
+        b: clamp(gray + (rgb.b - gray) * value),
+      };
+    };
+    const applySaturationLinear = (rgb: RGBVector, value: number): RGBVector => {
+      const rl = toLinear(rgb.r);
+      const gl = toLinear(rgb.g);
+      const bl = toLinear(rgb.b);
+      const Y = 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+      const rlin = Y + (rl - Y) * value;
+      const glin = Y + (gl - Y) * value;
+      const blin = Y + (bl - Y) * value;
+      return {
+        r: clamp(toSRGB(rlin)),
+        g: clamp(toSRGB(glin)),
+        b: clamp(toSRGB(blin)),
+      };
+    };
+    const applyVibranceGamma = (rgb: RGBVector, value: number): RGBVector => {
+      const maxC = Math.max(rgb.r, rgb.g, rgb.b);
+      const minC = Math.min(rgb.r, rgb.g, rgb.b);
+      const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
+      const factor = 1 + value * (1 - sEst);
+      const gray = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+      return {
+        r: clamp(gray + (rgb.r - gray) * factor),
+        g: clamp(gray + (rgb.g - gray) * factor),
+        b: clamp(gray + (rgb.b - gray) * factor),
+      };
+    };
+    const applyVibranceLinear = (rgb: RGBVector, value: number): RGBVector => {
+      const rl = toLinear(rgb.r);
+      const gl = toLinear(rgb.g);
+      const bl = toLinear(rgb.b);
+      const maxL = Math.max(rl, gl, bl);
+      const minL = Math.min(rl, gl, bl);
+      const sEst = maxL === 0 ? 0 : (maxL - minL) / maxL;
+      const factor = 1 + value * (1 - sEst);
+      const Y = 0.2126 * rl + 0.7152 * gl + 0.0722 * bl;
+      const rlin = Y + (rl - Y) * factor;
+      const glin = Y + (gl - Y) * factor;
+      const blin = Y + (bl - Y) * factor;
+      return {
+        r: clamp(toSRGB(rlin)),
+        g: clamp(toSRGB(glin)),
+        b: clamp(toSRGB(blin)),
+      };
+    };
+    const applyHueVec = (rgb: RGBVector, degrees: number): RGBVector => {
+      if (degrees === 0) return { ...rgb };
+      const angle = (degrees * Math.PI) / 180;
+      const cosA = Math.cos(angle);
+      const sinA = Math.sin(angle);
+      const m = [
+        cosA + (1 - cosA) / 3,
+        (1 / 3) * (1 - cosA) - Math.sqrt(1 / 3) * sinA,
+        (1 / 3) * (1 - cosA) + Math.sqrt(1 / 3) * sinA,
+        (1 / 3) * (1 - cosA) + Math.sqrt(1 / 3) * sinA,
+        cosA + (1 / 3) * (1 - cosA),
+        (1 / 3) * (1 - cosA) - Math.sqrt(1 / 3) * sinA,
+        (1 / 3) * (1 - cosA) - Math.sqrt(1 / 3) * sinA,
+        (1 / 3) * (1 - cosA) + Math.sqrt(1 / 3) * sinA,
+        cosA + (1 / 3) * (1 - cosA),
+      ];
+      return {
+        r: clamp(rgb.r * m[0] + rgb.g * m[1] + rgb.b * m[2]),
+        g: clamp(rgb.r * m[3] + rgb.g * m[4] + rgb.b * m[5]),
+        b: clamp(rgb.r * m[6] + rgb.g * m[7] + rgb.b * m[8]),
+      };
+    };
+
+    const processStep = (key: string, kind: TransformationType, value: number | undefined, updater: (rgb: RGBVector) => RGBVector, current: RGBVector) => {
+      const input = { ...current };
+      const output = updater(current);
+      steps.push({ key, kind, input, output, value });
+      return output;
+    };
+
+    let current: RGBVector = { ...baseVector };
+
+    if (pipeline && pipeline.length > 0) {
+      for (const inst of pipeline) {
+        if (!inst.enabled) continue;
+        if (inst.kind === 'brightness') {
+          const v = (inst.params as { value: number }).value;
+          current = processStep(inst.id, 'brightness', v, (rgb) => applyBrightnessVec(rgb, v), current);
+        } else if (inst.kind === 'contrast') {
+          const v = (inst.params as { value: number }).value;
+          current = processStep(inst.id, 'contrast', v, (rgb) => applyContrastVec(rgb, v), current);
+        } else if (inst.kind === 'saturation') {
+          const v = (inst.params as { value: number }).value;
+          current = processStep(inst.id, 'saturation', v, (rgb) => linearSaturation ? applySaturationLinear(rgb, v) : applySaturationGamma(rgb, v), current);
+        } else if (inst.kind === 'vibrance') {
+          const v = (inst.params as { vibrance: number }).vibrance;
+          current = processStep(inst.id, 'vibrance', v, (rgb) => linearSaturation ? applyVibranceLinear(rgb, v) : applyVibranceGamma(rgb, v), current);
+        } else if (inst.kind === 'hue') {
+          const v = (inst.params as { hue: number }).hue;
+          current = processStep(inst.id, 'hue', v, (rgb) => applyHueVec(rgb, v), current);
+        }
+      }
+    } else if (effectiveOrder && effectiveOrder.length > 0) {
+      for (const kind of effectiveOrder) {
+        if (kind === 'brightness') {
+          current = processStep('brightness', kind, effBrightness, (rgb) => applyBrightnessVec(rgb, effBrightness), current);
+        } else if (kind === 'contrast') {
+          current = processStep('contrast', kind, effContrast, (rgb) => applyContrastVec(rgb, effContrast), current);
+        } else if (kind === 'saturation') {
+          current = processStep('saturation', kind, effSaturation, (rgb) => linearSaturation ? applySaturationLinear(rgb, effSaturation) : applySaturationGamma(rgb, effSaturation), current);
+        } else if (kind === 'vibrance') {
+          current = processStep('vibrance', kind, effVibrance, (rgb) => linearSaturation ? applyVibranceLinear(rgb, effVibrance) : applyVibranceGamma(rgb, effVibrance), current);
+        } else if (kind === 'hue') {
+          current = processStep('hue', kind, effHue, (rgb) => applyHueVec(rgb, effHue), current);
+        }
+      }
+    }
+
+    return steps;
+  }, [pipeline, effectiveOrder, baseVector, linearSaturation, effBrightness, effContrast, effSaturation, effVibrance, effHue]);
+
+  const contrastStep = useMemo(() => {
+    const stepsForContrast = vectorSteps.filter(step => step.kind === 'contrast');
+    if (stepsForContrast.length === 0) return undefined;
+    if (selectedId) {
+      const match = stepsForContrast.find(step => step.key === selectedId);
+      if (match) return match;
+    }
+    return stepsForContrast[0];
+  }, [vectorSteps, selectedId]);
+
+  const contrastValueUsed = contrastStep?.value ?? effContrast;
+  const contrastInputVector: RGBVector = contrastStep?.input ?? baseVector;
+  const contrastOutputVector: RGBVector = contrastStep?.output ?? {
+    r: Math.max(0, Math.min(255, (contrastInputVector.r - 128) * contrastValueUsed + 128)),
+    g: Math.max(0, Math.min(255, (contrastInputVector.g - 128) * contrastValueUsed + 128)),
+    b: Math.max(0, Math.min(255, (contrastInputVector.b - 128) * contrastValueUsed + 128)),
+  };
+
   return (
     <Card className="p-6 border-border bg-card h-fit">
       <div className="w-full">
@@ -158,7 +336,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             
             <div className="text-foreground mt-4">Add Brightness Value:</div>
             <div className="text-primary mt-2">
-              + [{brightness}, {brightness}, {brightness}]
+              + [{effBrightness}, {effBrightness}, {effBrightness}]
             </div>
             
             <div className="text-foreground mt-4">Result:</div>
@@ -167,9 +345,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                 const R = selectedRGB?.r ?? 200;
                 const G = selectedRGB?.g ?? 150;
                 const B = selectedRGB?.b ?? 100;
-                const Rp = Math.max(0, Math.min(255, R + brightness));
-                const Gp = Math.max(0, Math.min(255, G + brightness));
-                const Bp = Math.max(0, Math.min(255, B + brightness));
+                const Rp = Math.max(0, Math.min(255, R + effBrightness));
+                const Gp = Math.max(0, Math.min(255, G + effBrightness));
+                const Bp = Math.max(0, Math.min(255, B + effBrightness));
                 return `= [${Rp.toFixed(0)}, ${Gp.toFixed(0)}, ${Bp.toFixed(0)}]`;
               })()}
             </div>
@@ -182,9 +360,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               For every pixel (r, g, b):
             </div>
             <div className="text-primary font-mono mt-2">
-              r' = r + {brightness}<br/>
-              g' = g + {brightness}<br/>
-              b' = b + {brightness}
+              r' = r + {effBrightness}<br/>
+              g' = g + {effBrightness}<br/>
+              b' = b + {effBrightness}
             </div>
           </div>
           <div className="bg-muted p-4 rounded-lg text-sm">
@@ -246,7 +424,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                 const maxC = Math.max(Rm, Gm, Bm);
                 const minC = Math.min(Rm, Gm, Bm);
                 const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
-                const f = 1 + (vibrance ?? 0) * (1 - sEst);
+                const f = 1 + (effVibrance ?? 0) * (1 - sEst);
                 const wR = linearSaturation ? 0.2126 : 0.299;
                 const wG = linearSaturation ? 0.7152 : 0.587;
                 const wB = linearSaturation ? 0.0722 : 0.114;
@@ -283,7 +461,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                 const maxC = Math.max(Rm, Gm, Bm);
                 const minC = Math.min(Rm, Gm, Bm);
                 const sEst = maxC === 0 ? 0 : (maxC - minC) / maxC;
-                const f = 1 + (vibrance ?? 0) * (1 - sEst);
+                const f = 1 + (effVibrance ?? 0) * (1 - sEst);
                 const wR = linearSaturation ? 0.2126 : 0.299;
                 const wG = linearSaturation ? 0.7152 : 0.587;
                 const wB = linearSaturation ? 0.0722 : 0.114;
@@ -326,53 +504,50 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           <div className="bg-muted p-4 rounded-lg text-sm">
             <div className="text-foreground font-semibold">Geometric intuition</div>
             <div className="text-muted-foreground mt-2 text-xs">
-              We scale in the direction from the midpoint of the gray vector: take the vector from mid‑gray
+              We scale in the direction from the midpoint of the gray vector to our current vector: take the vector from mid‑gray
               (128,128,128) to the pixel and stretch or compress it. The direction is preserved; only the distance
-              along that vector changes.
+              along that vector changes. In effect, when increasing contrast, we are pushing away from the midpoint. RGB channel values that are lower than 128 will be pushed down and those higher than 128 will be pushed up.
             </div>
           </div>
           
           <div className="bg-muted p-4 rounded-lg font-mono text-sm">
-            <div className="text-foreground">Original RGB Vector:</div>
+            <div className="text-foreground">Input vector after previous adjustments:</div>
             <div className="text-primary mt-2">
               {(() => {
-                const R = selectedRGB?.r ?? 200;
-                const G = selectedRGB?.g ?? 150;
-                const B = selectedRGB?.b ?? 100;
-                return `[R, G, B] = [${Math.round(R)}, ${Math.round(G)}, ${Math.round(B)}]`;
+                const Rprev = contrastInputVector.r;
+                const Gprev = contrastInputVector.g;
+                const Bprev = contrastInputVector.b;
+                return `[R_prev, G_prev, B_prev] = [${Math.round(Rprev)}, ${Math.round(Gprev)}, ${Math.round(Bprev)}]`;
               })()}
             </div>
             
             <div className="text-foreground mt-4">Subtract midpoint (128):</div>
             <div className="text-primary mt-2">
               {(() => {
-                const R = selectedRGB?.r ?? 200;
-                const G = selectedRGB?.g ?? 150;
-                const B = selectedRGB?.b ?? 100;
-                return `= [${(R - 128).toFixed(0)}, ${(G - 128).toFixed(0)}, ${(B - 128).toFixed(0)}]`;
+                const Rprev = contrastInputVector.r;
+                const Gprev = contrastInputVector.g;
+                const Bprev = contrastInputVector.b;
+                return `= [${(Rprev - 128).toFixed(0)}, ${(Gprev - 128).toFixed(0)}, ${(Bprev - 128).toFixed(0)}]`;
               })()}
             </div>
             
-            <div className="text-foreground mt-4">Multiply by contrast ({contrast.toFixed(2)}):</div>
+            <div className="text-foreground mt-4">Multiply by contrast ({contrastValueUsed.toFixed(2)}):</div>
             <div className="text-primary mt-2">
               {(() => {
-                const R = selectedRGB?.r ?? 200;
-                const G = selectedRGB?.g ?? 150;
-                const B = selectedRGB?.b ?? 100;
-                return `× ${contrast.toFixed(2)} = [${((R - 128) * contrast).toFixed(1)}, ${((G - 128) * contrast).toFixed(1)}, ${((B - 128) * contrast).toFixed(1)}]`;
+                const Rprev = contrastInputVector.r;
+                const Gprev = contrastInputVector.g;
+                const Bprev = contrastInputVector.b;
+                return `× ${contrastValueUsed.toFixed(2)} = [${((Rprev - 128) * contrastValueUsed).toFixed(1)}, ${((Gprev - 128) * contrastValueUsed).toFixed(1)}, ${((Bprev - 128) * contrastValueUsed).toFixed(1)}]`;
               })()}
             </div>
             
             <div className="text-foreground mt-4">Add midpoint back:</div>
             <div className="text-secondary mt-2">
               {(() => {
-                const R = selectedRGB?.r ?? 200;
-                const G = selectedRGB?.g ?? 150;
-                const B = selectedRGB?.b ?? 100;
-                const Rp = Math.max(0, Math.min(255, (R - 128) * contrast + 128));
-                const Gp = Math.max(0, Math.min(255, (G - 128) * contrast + 128));
-                const Bp = Math.max(0, Math.min(255, (B - 128) * contrast + 128));
-                return `+ 128 = [${Rp.toFixed(0)}, ${Gp.toFixed(0)}, ${Bp.toFixed(0)}]`;
+                const Rout = contrastOutputVector.r;
+                const Gout = contrastOutputVector.g;
+                const Bout = contrastOutputVector.b;
+                return `+ 128 = [${Rout.toFixed(0)}, ${Gout.toFixed(0)}, ${Bout.toFixed(0)}]`;
               })()}
             </div>
           </div>
@@ -382,9 +557,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               For every pixel (r, g, b):
             </div>
             <div className="text-primary font-mono mt-2">
-              r' = (r - 128) × {contrast.toFixed(2)} + 128<br/>
-              g' = (g - 128) × {contrast.toFixed(2)} + 128<br/>
-              b' = (b - 128) × {contrast.toFixed(2)} + 128
+              r' = (r - 128) × {contrastValueUsed.toFixed(2)} + 128<br/>
+              g' = (g - 128) × {contrastValueUsed.toFixed(2)} + 128<br/>
+              b' = (b - 128) × {contrastValueUsed.toFixed(2)} + 128
             </div>
             <div className="text-muted-foreground mt-3 text-xs">
               If values are normalized to 0–1, replace 128 with 0.5 instead.
@@ -394,7 +569,6 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <div className="text-foreground font-semibold">What this means</div>
             <div className="text-muted-foreground mt-2 text-xs">
               Contrast stretches distances from mid-gray (128). Values above 128 move up; values below move down.
-              In linear-light, this behaves like a true dynamic‑range change; in sRGB it's a display‑referred tweak.
             </div>
           </div>
           
@@ -452,7 +626,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                 if (!linearSaturation) {
                   const wR = 0.299, wG = 0.587, wB = 0.114;
                   const gray = wR * R + wG * G + wB * B;
-                  const s = saturation;
+                  const s = effSaturation;
                   const Rp = Math.max(0, Math.min(255, gray + (R - gray) * s));
                   const Gp = Math.max(0, Math.min(255, gray + (G - gray) * s));
                   const Bp = Math.max(0, Math.min(255, gray + (B - gray) * s));
@@ -473,7 +647,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                   const rl = toLin(R), gl = toLin(G), bl = toLin(B);
                   const wR = 0.2126, wG = 0.7152, wB = 0.0722;
                   const Y = wR * rl + wG * gl + wB * bl;
-                  const s = saturation;
+                  const s = effSaturation;
                   const rlinP = Y + (rl - Y) * s;
                   const glinP = Y + (gl - Y) * s;
                   const blinP = Y + (bl - Y) * s;
@@ -497,7 +671,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <div className="text-muted-foreground">Matrix form (adapts to slider and color space):</div>
             <div className="text-primary font-mono mt-2 text-xs">
               {(() => {
-                const s = saturation;
+                const s = effSaturation;
                 const wR = linearSaturation ? 0.2126 : 0.299;
                 const wG = linearSaturation ? 0.7152 : 0.587;
                 const wB = linearSaturation ? 0.0722 : 0.114;
@@ -542,12 +716,12 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           </div>
           
           <div className="bg-muted p-4 rounded-lg font-mono text-sm overflow-x-auto">
-            <div className="text-foreground">Rotation angle: {hue}° = {(hue * Math.PI / 180).toFixed(3)} radians</div>
+            <div className="text-foreground">Rotation angle: {effHue}° = {(effHue * Math.PI / 180).toFixed(3)} radians</div>
             
             <div className="text-foreground mt-4">3×3 Rotation Matrix:</div>
             <div className="text-primary mt-2 text-xs">
               {(() => {
-                const angle = (hue * Math.PI) / 180;
+                const angle = (effHue * Math.PI) / 180;
                 const cosA = Math.cos(angle);
                 const sinA = Math.sin(angle);
                 const a = cosA + (1 - cosA) / 3;
@@ -570,7 +744,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             </div>
             <div className="text-primary font-mono mt-2 text-xs">
               {(() => {
-                const angle = (hue * Math.PI) / 180;
+                const angle = (effHue * Math.PI) / 180;
                 const cosA = Math.cos(angle);
                 const sinA = Math.sin(angle);
                 const a = (cosA + (1 - cosA) / 3).toFixed(3);
