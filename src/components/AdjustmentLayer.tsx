@@ -2,7 +2,7 @@ import { DndContext, closestCenter, DragEndEvent, KeyboardSensor, PointerSensor,
 import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Sun, Circle, Palette, Rainbow, Droplet, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { TransformationType, FilterKind, FilterInstance, formatValueFor, BlurParams, SharpenParams, EdgeParams, DenoiseParams } from '@/types/transformations';
+import { TransformationType, FilterKind, FilterInstance, formatValueFor, BlurParams, SharpenParams, EdgeParams, DenoiseParams, CustomConvParams } from '@/types/transformations';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -172,6 +172,7 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
               <DropdownMenuItem onClick={() => onAddInstance('sharpen')}>Sharpen</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAddInstance('denoise')}>Denoise</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAddInstance('edge')}>Edge Detect</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAddInstance('customConv')}>Custom Convolution</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
@@ -196,6 +197,8 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
                     ? { min: 0, max: 5, step: 0.1, defaultValue: 1, formatValue: (v: number) => `${v.toFixed(1)}` }
                     : kind === 'edge'
                     ? { min: 3, max: 5, step: 2, defaultValue: 3, formatValue: (v: number) => `${v}×${v}` }
+                    : kind === 'customConv'
+                    ? { min: 3, max: 9, step: 2, defaultValue: 3, formatValue: (v: number) => `${v}×${v}` }
                     : /* denoise strength */ { min: 0, max: 1, step: 0.05, defaultValue: 0.5, formatValue: (v: number) => `k=${v.toFixed(2)}` }
                 );
                 const currentValue = kind === 'vibrance'
@@ -208,18 +211,22 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
                   ? (inst.params as SharpenParams).amount
                   : kind === 'edge'
                   ? (inst.params as EdgeParams).size
+                  : kind === 'customConv'
+                  ? (inst.params as CustomConvParams).size
                   : kind === 'denoise'
                   ? ((inst.params as DenoiseParams).strength ?? 0.5)
                   : (inst.params as { value: number }).value;
                 const label = (kind === 'brightness' || kind === 'contrast' || kind === 'saturation' || kind === 'vibrance' || kind === 'hue')
                   ? TRANSFORM_LABELS[kind as TransformationType]
-                  : kind === 'blur' ? 'Blur' : kind === 'sharpen' ? 'Sharpen' : kind === 'edge' ? 'Edge Detect' : 'Denoise';
+                  : kind === 'blur' ? 'Blur' : kind === 'sharpen' ? 'Sharpen' : kind === 'edge' ? 'Edge Detect' : kind === 'customConv' ? 'Custom Convolution' : 'Denoise';
                 const formattedNow = formatValueFor(inst.kind, inst.params);
+                // Reverse numbering: bottom item (last in array) gets 1, top item (first in array) gets highest number
+                const displayIndex = props.pipeline.length - index - 1;
                 return (
                   <DraggableSliderCard
                     key={inst.id}
                     id={inst.id}
-                    index={index}
+                    index={displayIndex}
                     kind={inst.kind}
                     enabled={inst.enabled}
                     value={currentValue}
@@ -248,11 +255,13 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
                 const config = getTransformConfig(type);
                 const value = getValue(type, rest);
                 const onChange = getOnChange(type, rest);
+                // Reverse numbering: bottom item (last in array) gets 1, top item (first in array) gets highest number
+                const displayIndex = transformOrder.length - index - 1;
                 return (
                   <DraggableSliderCard
                     key={type}
                     id={type}
-                    index={index}
+                    index={displayIndex}
                     kind={type}
                     value={value}
                     onChange={onChange}

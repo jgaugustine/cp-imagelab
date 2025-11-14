@@ -25,7 +25,7 @@ interface ImageCanvasProps {
   onPixelSelect?: (rgb: RGB) => void;
   // Emit convolution analysis (dot products) for selected conv layer on click
   onSelectConvAnalysis?: (analysis: {
-    kind: 'blur' | 'sharpen' | 'edge' | 'denoise';
+    kind: 'blur' | 'sharpen' | 'edge' | 'denoise' | 'customConv';
     size: number;
     kernel?: number[][];
     edgeKernels?: { kx: number[][]; ky: number[][] };
@@ -49,7 +49,7 @@ interface InspectorData {
   cursorX: number;
   cursorY: number;
   steps?: { id: string; kind: FilterKind; inputRGB: RGB; outputRGB: RGB }[];
-  activeConv?: { kind: 'blur' | 'sharpen' | 'edge' | 'denoise'; kernel?: number[][]; edgeKernels?: { kx: number[][]; ky: number[][] }; padding: 'zero' | 'reflect' | 'edge' };
+  activeConv?: { kind: 'blur' | 'sharpen' | 'edge' | 'denoise' | 'customConv'; kernel?: number[][]; edgeKernels?: { kx: number[][]; ky: number[][] }; padding: 'zero' | 'reflect' | 'edge' };
   convWindow?: { size: number; pixels: { r: number; g: number; b: number }[][] };
 }
 
@@ -464,7 +464,8 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
       }
     } else {
       // Instance-based path, including convolution-backed adjustments
-      for (const inst of pipeline) {
+      // Reverse pipeline so bottom item (brightness, last in array) is applied first
+      for (const inst of [...pipeline].reverse()) {
         if (!inst.enabled) continue;
         if (inst.kind === 'brightness' || inst.kind === 'contrast' || inst.kind === 'saturation' || inst.kind === 'hue' || inst.kind === 'vibrance') {
           const kind = inst.kind;
@@ -751,7 +752,7 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
     // Legacy map for existing UI:
     const stepByStep: Record<TransformationType, RGB> = {} as Record<TransformationType, RGB>;
     let rgb = originalRGB;
-    const activeOrder = pipeline ? (pipeline.filter(p => p.enabled).map(p => (p.kind as any) as TransformationType)) : transformOrder;
+    const activeOrder = pipeline ? (pipeline.filter(p => p.enabled).map(p => (p.kind as any) as TransformationType).reverse()) : transformOrder;
     for (const transformType of activeOrder) {
       rgb = applyTransformation(rgb, transformType);
       stepByStep[transformType] = { ...rgb };
@@ -762,7 +763,8 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
     if (pipeline) {
       steps = [];
       let color = originalRGB;
-      for (const inst of pipeline) {
+      // Reverse pipeline so bottom item (brightness, last in array) is applied first
+      for (const inst of [...pipeline].reverse()) {
         if (!inst.enabled) continue;
         const inputRGB = color;
         let output: RGB = inputRGB;
@@ -799,6 +801,10 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
           if (p.combine === 'x') output = { r: Math.abs(rx), g: Math.abs(gx), b: Math.abs(bx) };
           else if (p.combine === 'y') output = { r: Math.abs(ry), g: Math.abs(gy), b: Math.abs(by) };
           else output = { r: Math.hypot(rx, ry), g: Math.hypot(gx, gy), b: Math.hypot(bx, by) } as RGB;
+        } else if (inst.kind === 'customConv') {
+          const p = inst.params as CustomConvParams;
+          const [r, g, b] = convolveAtPixel(originalImageDataRef.current as ImageData, x, y, p.kernel, { padding: p.padding ?? 'edge', perChannel: true });
+          output = { r, g, b };
         } else if (inst.kind === 'denoise') {
           const p = inst.params as DenoiseParams;
           if (p.kind === 'mean') {
@@ -849,7 +855,7 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
     // determine active convolution-backed instance for inspector context (only if selectedInstanceId points to a convolution layer)
     let activeConv: InspectorData['activeConv'] | undefined = undefined;
     if (pipeline && selectedInstanceId) {
-      const selectedConv = pipeline.find(p => p.id === selectedInstanceId && p.enabled && (p.kind === 'blur' || p.kind === 'sharpen' || p.kind === 'edge' || p.kind === 'denoise'));
+      const selectedConv = pipeline.find(p => p.id === selectedInstanceId && p.enabled && (p.kind === 'blur' || p.kind === 'sharpen' || p.kind === 'edge' || p.kind === 'denoise' || p.kind === 'customConv'));
       if (selectedConv) {
         if (selectedConv.kind === 'blur') {
           const p = selectedConv.params as BlurParams;
@@ -867,6 +873,9 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
           const p = selectedConv.params as DenoiseParams;
           const kernel = p.kind === 'mean' ? boxKernel(p.size) : undefined;
           activeConv = { kind: 'denoise', kernel, padding: (p.padding ?? 'edge') };
+        } else if (selectedConv.kind === 'customConv') {
+          const p = selectedConv.params as CustomConvParams;
+          activeConv = { kind: 'customConv', kernel: p.kernel, padding: (p.padding ?? 'edge') };
         }
       }
     }

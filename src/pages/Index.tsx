@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Upload, Layers } from "lucide-react";
 import { ImageCanvas } from "@/components/ImageCanvas";
 import { MathExplanation } from "@/components/MathExplanation";
-import { TransformationType, RGB, BlurParams, SharpenParams, EdgeParams, DenoiseParams } from "@/types/transformations";
+import { TransformationType, RGB, BlurParams, SharpenParams, EdgeParams, DenoiseParams, CustomConvParams } from "@/types/transformations";
 import { AdjustmentLayer } from "@/components/AdjustmentLayer";
 import { downsizeImageToDataURL } from "@/lib/imageResize";
 import { FilterInstance } from "@/types/transformations";
@@ -173,6 +173,35 @@ export default function Index(_props: IndexProps) {
                       const p = prev.params as DenoiseParams;
                       const strength = Math.max(0, Math.min(1, Number(nextValue)));
                       return { ...prev, params: { ...p, strength } };
+                    }
+                    if (kind === 'customConv') {
+                      const p = prev.params as CustomConvParams;
+                      const newSize = ((): 3|5|7|9 => {
+                        const v = Math.round(Number(nextValue));
+                        if (v <= 4) return 3; if (v <= 6) return 5; if (v <= 8) return 7; return 9;
+                      })();
+                      // Resize kernel when size changes
+                      const oldSize = p.kernel.length;
+                      const newKernel: number[][] = Array.from({ length: newSize }, () => 
+                        Array.from({ length: newSize }, () => 0)
+                      );
+                      // Copy existing values, centered
+                      const offset = Math.floor((newSize - oldSize) / 2);
+                      for (let y = 0; y < oldSize && y + offset < newSize; y++) {
+                        for (let x = 0; x < oldSize && x + offset < newSize; x++) {
+                          if (y + offset >= 0 && x + offset >= 0) {
+                            newKernel[y + offset][x + offset] = p.kernel[y][x];
+                          }
+                        }
+                      }
+                      // If expanding, initialize center to 1 (identity-like) if it's zero
+                      if (newSize > oldSize) {
+                        const center = Math.floor(newSize / 2);
+                        if (newKernel[center][center] === 0) {
+                          newKernel[center][center] = 1;
+                        }
+                      }
+                      return { ...prev, params: { ...p, size: newSize, kernel: newKernel } };
                     }
                     return { ...prev, params: { value: nextValue } };
                   });

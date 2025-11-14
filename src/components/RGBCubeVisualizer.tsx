@@ -192,7 +192,8 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
     // If we have a pipeline with instance params, use it for accuracy
     if (pipeline && pipeline.length > 0) {
       let rgb = { ...original };
-      for (const inst of pipeline) {
+      // Reverse pipeline so bottom item (brightness, last in array) is applied first
+      for (const inst of [...pipeline].reverse()) {
         if (!inst.enabled) continue;
         rgb = computeInstanceStep(rgb, inst);
       }

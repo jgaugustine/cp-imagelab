@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import RGBCubeVisualizer from "@/components/RGBCubeVisualizer";
-import { FilterInstance, TransformationType, BlurParams, SharpenParams, EdgeParams, DenoiseParams } from "@/types/transformations";
+import { FilterInstance, TransformationType, BlurParams, SharpenParams, EdgeParams, DenoiseParams, CustomConvParams } from "@/types/transformations";
 import { KernelPreview } from "@/components/Convolution/KernelGrid";
 import ProductCube from "@/components/Convolution/ProductCube";
 import { gaussianKernel, boxKernel, sobelKernels, prewittKernels, unsharpKernel } from "@/lib/convolution";
@@ -84,7 +84,8 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
   const allParams = useMemo(() => ({ brightness: effBrightness, contrast: effContrast, saturation: effSaturation, vibrance: effVibrance, hue: effHue, linearSaturation }), [effBrightness, effContrast, effSaturation, effVibrance, effHue, linearSaturation]);
   const effectiveOrder: TransformationType[] | undefined = useMemo(() => {
     if (!pipeline) return transformOrder as TransformationType[] | undefined;
-    return pipeline.filter(p => p.enabled).map(p => p.kind as TransformationType);
+    // Reverse so bottom item (brightness, last in array) is first in order
+    return pipeline.filter(p => p.enabled).map(p => p.kind as TransformationType).reverse();
   }, [pipeline, transformOrder]);
   const selectedId = selectedInstanceId ?? undefined;
 
@@ -210,7 +211,8 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
     let current: RGBVector = { ...baseVector };
 
     if (pipeline && pipeline.length > 0) {
-      for (const inst of pipeline) {
+      // Reverse pipeline so bottom item (brightness, last in array) is applied first
+      for (const inst of [...pipeline].reverse()) {
         if (!inst.enabled) continue;
         if (inst.kind === 'brightness') {
           const v = (inst.params as { value: number }).value;
@@ -1270,6 +1272,187 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                   </div>
                 </div>
                 <div className="text-xs text-muted-foreground mt-2">Median uses sorted neighborhood values (no fixed kernel).</div>
+              </>
+            );
+          })()}
+        </div>
+        )}
+
+        {activeTab === 'customConv' && pipeline && selectedInstanceId && (
+        <div className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-foreground">Custom Convolution</h3>
+            <p className="text-sm text-muted-foreground">Define your own convolution kernel and see its effect on the image.</p>
+          </div>
+          {(() => {
+            const inst = pipeline.find(p => p.id === selectedInstanceId);
+            if (!inst) return null;
+            const p = inst.params as CustomConvParams;
+            const k = p.kernel;
+            
+            // Helper to resize kernel when size changes
+            const resizeKernel = (newSize: 3 | 5 | 7 | 9): number[][] => {
+              const oldSize = k.length;
+              const newKernel: number[][] = Array.from({ length: newSize }, () => 
+                Array.from({ length: newSize }, () => 0)
+              );
+              
+              // Copy existing values, centered
+              const offset = Math.floor((newSize - oldSize) / 2);
+              for (let y = 0; y < oldSize && y + offset < newSize; y++) {
+                for (let x = 0; x < oldSize && x + offset < newSize; x++) {
+                  if (y + offset >= 0 && x + offset >= 0) {
+                    newKernel[y + offset][x + offset] = k[y][x];
+                  }
+                }
+              }
+              
+              // If expanding, initialize center to 1 (identity-like)
+              if (newSize > oldSize) {
+                const center = Math.floor(newSize / 2);
+                if (newKernel[center][center] === 0) {
+                  newKernel[center][center] = 1;
+                }
+              }
+              
+              return newKernel;
+            };
+            
+            return (
+              <>
+                <div className="flex items-center gap-3 text-sm">
+                  <label className="text-muted-foreground">Kernel Size</label>
+                  <select className="border rounded px-2 py-1 bg-card" value={p.size}
+                    onChange={(e) => {
+                      const newSize = Number(e.target.value) as 3 | 5 | 7 | 9;
+                      const newKernel = resizeKernel(newSize);
+                      onUpdateInstanceParams?.(inst.id, prev => ({ 
+                        ...prev, 
+                        params: { 
+                          ...(prev.params as CustomConvParams), 
+                          size: newSize,
+                          kernel: newKernel
+                        } 
+                      }));
+                    }}>
+                    <option value={3}>3×3</option>
+                    <option value={5}>5×5</option>
+                    <option value={7}>7×7</option>
+                    <option value={9}>9×9</option>
+                  </select>
+                </div>
+                <div className="mt-2">
+                  <div className="text-xs text-muted-foreground mb-2">Custom {p.size}×{p.size} kernel (editable):</div>
+                  <div className="font-mono text-sm">
+                    {k.map((row, ri) => (
+                      <div key={ri} className="flex items-center gap-1">
+                        <span className="mr-1">[</span>
+                        {row.map((v, ci) => (
+                          <input
+                            key={ci}
+                            type="number"
+                            step="0.01"
+                            value={v}
+                            onChange={(e) => {
+                              const inputValue = e.target.value;
+                              // Allow empty string, "-", or valid numbers
+                              if (inputValue === '' || inputValue === '-') {
+                                // Don't update yet, let user continue typing
+                                return;
+                              }
+                              const newValue = parseFloat(inputValue);
+                              // Only update if we have a valid number
+                              if (!isNaN(newValue)) {
+                                const newKernel = k.map((r, ry) => 
+                                  r.map((c, cx) => (ry === ri && cx === ci) ? newValue : c)
+                                );
+                                onUpdateInstanceParams?.(inst.id, prev => ({ 
+                                  ...prev, 
+                                  params: { 
+                                    ...(prev.params as CustomConvParams), 
+                                    kernel: newKernel
+                                  } 
+                                }));
+                              }
+                            }}
+                            onBlur={(e) => {
+                              // On blur, ensure we have a valid number (default to 0 if invalid)
+                              const inputValue = e.target.value;
+                              const newValue = parseFloat(inputValue) || 0;
+                              const newKernel = k.map((r, ry) => 
+                                r.map((c, cx) => (ry === ri && cx === ci) ? newValue : c)
+                              );
+                              onUpdateInstanceParams?.(inst.id, prev => ({ 
+                                ...prev, 
+                                params: { 
+                                  ...(prev.params as CustomConvParams), 
+                                  kernel: newKernel
+                                } 
+                              }));
+                            }}
+                            className="w-16 px-1 py-0.5 text-xs border rounded bg-card text-foreground text-center"
+                          />
+                        ))}
+                        <span className="ml-1">]</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-2">
+                  <KernelPreview kernel={k} title="Kernel (grayscale)" />
+                </div>
+                <div className="bg-muted p-4 rounded-lg text-sm mt-4">
+                  <div className="text-foreground font-semibold">How it works</div>
+                  <div className="text-muted-foreground mt-2 text-xs">
+                    Convolution applies your kernel to each pixel in the image. For each pixel, the kernel is centered on that pixel,
+                    and each kernel value is multiplied by the corresponding pixel value in the neighborhood. The results are summed
+                    to produce the output pixel value.
+                    <div className="mt-2">
+                      <strong>Tips:</strong>
+                      <ul className="list-disc list-inside mt-1 space-y-1">
+                        <li>Kernels that sum to 1 preserve overall brightness</li>
+                        <li>Negative values can create edge detection or sharpening effects</li>
+                        <li>Larger kernels affect larger neighborhoods but are slower to compute</li>
+                        <li>Try common kernels like identity (center=1, rest=0), blur (all positive, sum=1), or edge detection (center positive, neighbors negative)</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+                {convAnalysis && convAnalysis.kind === 'customConv' && convAnalysis.size === p.size && (
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold text-foreground mb-1">Dot products at clicked pixel</div>
+                    <div className="overflow-auto">
+                      <div className="text-[10px] text-muted-foreground mb-1">R channel</div>
+                      <div className="grid" style={{ gridTemplateColumns: `repeat(${p.size}, minmax(0, 1fr))`, gap: '2px' }}>
+                        {convAnalysis.products.r.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                          <div key={`r-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                        )))}
+                      </div>
+                      <div className="mt-2">
+                        <ProductCube title="R 3D" products={convAnalysis.products.r} size={p.size} />
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-2 mb-1">G channel</div>
+                      <div className="grid" style={{ gridTemplateColumns: `repeat(${p.size}, minmax(0, 1fr))`, gap: '2px' }}>
+                        {convAnalysis.products.g.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                          <div key={`g-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                        )))}
+                      </div>
+                      <div className="mt-2">
+                        <ProductCube title="G 3D" products={convAnalysis.products.g} size={p.size} />
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-2 mb-1">B channel</div>
+                      <div className="grid" style={{ gridTemplateColumns: `repeat(${p.size}, minmax(0, 1fr))`, gap: '2px' }}>
+                        {convAnalysis.products.b.flatMap((row: number[], ri: number) => row.map((v: number, ci: number) => (
+                          <div key={`b-${ri}-${ci}`} className="px-1 py-0.5 text-[10px] font-mono rounded border border-border bg-muted text-foreground text-center">{v.toFixed(1)}</div>
+                        )))}
+                      </div>
+                      <div className="mt-2">
+                        <ProductCube title="B 3D" products={convAnalysis.products.b} size={p.size} />
+                      </div>
+                      <div className="text-[10px] text-muted-foreground mt-2">Sums: R={convAnalysis.sums.r.toFixed(1)} G={convAnalysis.sums.g.toFixed(1)} B={convAnalysis.sums.b.toFixed(1)}</div>
+                    </div>
+                  </div>
+                )}
               </>
             );
           })()}
