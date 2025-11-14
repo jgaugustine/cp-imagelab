@@ -36,6 +36,8 @@ interface MathExplanationProps {
 export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, pipeline, selectedInstanceId, hasImage, activeTab, onUpdateInstanceParams, convAnalysis }: MathExplanationProps) {
   const [localLastChange, setLocalLastChange] = useState<'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | undefined>(undefined);
   const prevRef = useRef({ brightness, contrast, saturation, vibrance, hue });
+  // Track input values for custom convolution kernel editing (keyed by instance ID and cell position)
+  const [customConvInputValues, setCustomConvInputValues] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const prev = prevRef.current;
@@ -1290,6 +1292,15 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             const p = inst.params as CustomConvParams;
             const k = p.kernel;
             
+            // Helper to get unique key for each input cell
+            const getInputKey = (ri: number, ci: number) => `${inst.id}-${ri}-${ci}`;
+            const getInputValue = (ri: number, ci: number, currentValue: number): string => {
+              const key = getInputKey(ri, ci);
+              return customConvInputValues[key] !== undefined 
+                ? customConvInputValues[key] 
+                : currentValue.toString();
+            };
+            
             // Helper to resize kernel when size changes
             const resizeKernel = (newSize: 3 | 5 | 7 | 9): number[][] => {
               const oldSize = k.length;
@@ -1350,19 +1361,21 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                         {row.map((v, ci) => (
                           <input
                             key={ci}
-                            type="number"
-                            step="0.01"
-                            value={v}
+                            type="text"
+                            inputMode="decimal"
+                            value={getInputValue(ri, ci, v)}
                             onChange={(e) => {
                               const inputValue = e.target.value;
-                              // Allow empty string, "-", or valid numbers
-                              if (inputValue === '' || inputValue === '-') {
-                                // Don't update yet, let user continue typing
-                                return;
-                              }
+                              const key = getInputKey(ri, ci);
+                              
+                              // Update state to allow typing "-" and partial numbers
+                              setCustomConvInputValues(prev => ({ ...prev, [key]: inputValue }));
+                              
+                              // Try to parse as number
                               const newValue = parseFloat(inputValue);
-                              // Only update if we have a valid number
-                              if (!isNaN(newValue)) {
+                              
+                              // Only update kernel if we have a valid complete number
+                              if (!isNaN(newValue) && inputValue !== '' && inputValue !== '-' && inputValue !== '-.') {
                                 const newKernel = k.map((r, ry) => 
                                   r.map((c, cx) => (ry === ri && cx === ci) ? newValue : c)
                                 );
@@ -1376,9 +1389,19 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                               }
                             }}
                             onBlur={(e) => {
-                              // On blur, ensure we have a valid number (default to 0 if invalid)
+                              // On blur, commit the value (default to 0 if invalid)
                               const inputValue = e.target.value;
+                              const key = getInputKey(ri, ci);
                               const newValue = parseFloat(inputValue) || 0;
+                              
+                              // Clear state for this input
+                              setCustomConvInputValues(prev => {
+                                const next = { ...prev };
+                                delete next[key];
+                                return next;
+                              });
+                              
+                              // Update kernel with final value
                               const newKernel = k.map((r, ry) => 
                                 r.map((c, cx) => (ry === ri && cx === ci) ? newValue : c)
                               );
