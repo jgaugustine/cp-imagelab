@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { PixelInspector } from "./PixelInspector";
-import { TransformationType, RGB, FilterInstance, FilterKind, BlurParams, SharpenParams, EdgeParams, DenoiseParams } from "@/types/transformations";
+import { TransformationType, RGB, FilterInstance, FilterKind, BlurParams, SharpenParams, EdgeParams, DenoiseParams, CustomConvParams } from "@/types/transformations";
 import { cpuConvolutionBackend } from "@/lib/convolutionBackend";
 import { convolveAtPixel, gaussianKernel, boxKernel, sobelKernels, prewittKernels, unsharpKernel } from "@/lib/convolution";
 
@@ -509,6 +509,10 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
           const p = inst.params as DenoiseParams;
           const out = cpuConvolutionBackend.denoise(imageData, p);
           for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+        } else if (inst.kind === 'customConv') {
+          const p = inst.params as CustomConvParams;
+          const out = cpuConvolutionBackend.customConv(imageData, p);
+          for (let j = 0; j < data.length; j++) data[j] = out.data[j];
         }
       }
     }
@@ -637,6 +641,10 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
           } else if (inst.kind === 'denoise') {
             const p = inst.params as DenoiseParams;
             const out = cpuConvolutionBackend.denoise(imageData, p);
+            for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+          } else if (inst.kind === 'customConv') {
+            const p = inst.params as CustomConvParams;
+            const out = cpuConvolutionBackend.customConv(imageData, p);
             for (let j = 0; j < data.length; j++) data[j] = out.data[j];
           }
         }

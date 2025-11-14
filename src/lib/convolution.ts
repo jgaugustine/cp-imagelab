@@ -1,4 +1,4 @@
-import { EdgeParams, SharpenParams, BlurParams, DenoiseParams } from "@/types/transformations";
+import { EdgeParams, SharpenParams, BlurParams, DenoiseParams, CustomConvParams } from "@/types/transformations";
 
 type PaddingMode = 'zero' | 'reflect' | 'edge';
 
@@ -290,6 +290,14 @@ export function applyDenoise(imageData: ImageData, params: DenoiseParams): Image
     }
   }
   return out;
+}
+
+export function applyCustomConv(imageData: ImageData, params: CustomConvParams): ImageData {
+  return convolveImageData(imageData, params.kernel, { 
+    stride: params.stride ?? 1, 
+    padding: params.padding ?? 'edge', 
+    perChannel: true 
+  });
 }
 
 

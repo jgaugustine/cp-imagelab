@@ -23,7 +23,7 @@ export const TRANSFORM_ICONS: Record<TransformationType, string> = {
 };
 
 // Instance-based pipeline types (additive; keeps existing exports intact)
-export type FilterKind = TransformationType | 'blur' | 'sharpen' | 'edge' | 'denoise';
+export type FilterKind = TransformationType | 'blur' | 'sharpen' | 'edge' | 'denoise' | 'customConv';
 
 export type BlurParams = {
   kind: 'box' | 'gaussian';
@@ -58,6 +58,13 @@ export type DenoiseParams = {
   padding?: 'zero' | 'reflect' | 'edge';
 };
 
+export type CustomConvParams = {
+  size: 3 | 5 | 7 | 9;
+  kernel: number[][]; // user-defined kernel matrix
+  stride?: number;
+  padding?: 'zero' | 'reflect' | 'edge';
+};
+
 export type FilterParams =
   | { value: number }
   | { vibrance: number }
@@ -65,7 +72,8 @@ export type FilterParams =
   | BlurParams
   | SharpenParams
   | EdgeParams
-  | DenoiseParams;
+  | DenoiseParams
+  | CustomConvParams;
 
 export interface FilterInstance {
   id: string;
@@ -95,6 +103,14 @@ export function defaultParamsFor(kind: FilterKind): FilterParams {
       return { operator: 'sobel', size: 3, combine: 'magnitude', stride: 1, padding: 'edge' } as EdgeParams;
     case 'denoise':
       return { kind: 'mean', size: 3, strength: 0.5, stride: 1, padding: 'edge' } as DenoiseParams;
+    case 'customConv':
+      // Initialize with identity-like kernel (center = 1, rest = 0)
+      const defaultSize = 3;
+      const kernel: number[][] = Array.from({ length: defaultSize }, () => 
+        Array.from({ length: defaultSize }, () => 0)
+      );
+      kernel[Math.floor(defaultSize / 2)][Math.floor(defaultSize / 2)] = 1;
+      return { size: defaultSize, kernel, stride: 1, padding: 'edge' } as CustomConvParams;
   }
 }
 
@@ -136,6 +152,11 @@ export function formatValueFor(kind: FilterKind, params: FilterParams): string {
     const s = p.stride ?? 1;
     const st = p.strength ?? 0.5;
     return `${p.kind} ${p.size}×${p.size} s${s} k=${st.toFixed(2)}`;
+  }
+  if (kind === 'customConv') {
+    const p = params as CustomConvParams;
+    const s = p.stride ?? 1;
+    return `custom ${p.size}×${p.size} s${s}`;
   }
   return '';
 }
@@ -205,5 +226,18 @@ export const TRANSFORM_REGISTRY: Record<FilterKind, TransformRegistryItem> = {
     label: 'Denoise',
     isPerPixel: true,
     defaults: () => ({ kind: 'mean', size: 3, stride: 1, padding: 'edge' } as DenoiseParams)
+  },
+  customConv: {
+    kind: 'customConv',
+    label: 'Custom Convolution',
+    isPerPixel: true,
+    defaults: () => {
+      const defaultSize = 3;
+      const kernel: number[][] = Array.from({ length: defaultSize }, () => 
+        Array.from({ length: defaultSize }, () => 0)
+      );
+      kernel[Math.floor(defaultSize / 2)][Math.floor(defaultSize / 2)] = 1;
+      return { size: defaultSize, kernel, stride: 1, padding: 'edge' } as CustomConvParams;
+    }
   }
 };

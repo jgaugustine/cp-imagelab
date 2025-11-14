@@ -20,7 +20,7 @@ const App = () => {
     return `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
   }, []);
   const [pipeline, setPipeline] = useState<FilterInstance[]>(() => {
-    const kinds: FilterKind[] = ['brightness', 'contrast', 'saturation', 'vibrance', 'hue'];
+    const kinds: FilterKind[] = ['hue', 'vibrance', 'saturation', 'contrast', 'brightness'];
     return kinds.map(kind => ({
       id: typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function' ? (crypto as any).randomUUID() : `${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`,
       kind,
@@ -39,7 +39,7 @@ const App = () => {
       params: defaultParamsFor(kind),
       enabled: true,
     };
-    setPipeline(prev => [...prev, instance]);
+    setPipeline(prev => [instance, ...prev]);
     setSelectedInstanceId(id);
   }, [generateId]);
 
@@ -53,6 +53,7 @@ const App = () => {
         id: generateId(),
       };
       const next = [...prev];
+      // Insert duplicate right after the original (which will appear below it visually)
       next.splice(idx + 1, 0, dup);
       return next;
     });

@@ -1,7 +1,7 @@
 import { Card } from "@/components/ui/card";
 import RGBCubeVisualizer from "@/components/RGBCubeVisualizer";
 import { FilterInstance, TransformationType, BlurParams, SharpenParams, EdgeParams, DenoiseParams } from "@/types/transformations";
-import KernelGrid, { KernelPreview } from "@/components/Convolution/KernelGrid";
+import { KernelPreview } from "@/components/Convolution/KernelGrid";
 import ProductCube from "@/components/Convolution/ProductCube";
 import { gaussianKernel, boxKernel, sobelKernels, prewittKernels, unsharpKernel } from "@/lib/convolution";
 // Tabs removed; we render sections conditionally based on activeTab
@@ -828,9 +828,58 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                     <option value={7}>7×7</option>
                   </select>
                 </div>
-                <KernelGrid kernel={k} title={`${p.kind} ${p.size}×${p.size}`} />
+                <div className="mt-2">
+                  <div className="text-xs text-muted-foreground mb-2">{p.kind} {p.size}×{p.size} kernel:</div>
+                  <div className="font-mono text-sm">
+                    {k.map((row, ri) => (
+                      <div key={ri} className="flex items-center">
+                        <span className="mr-1">[</span>
+                        {row.map((v, ci) => (
+                          <span key={ci} className="px-2">
+                            {Math.abs(v) < 1e-6 ? '0' : v.toFixed(3)}
+                          </span>
+                        ))}
+                        <span className="ml-1">]</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
                 <div className="mt-2">
                   <KernelPreview kernel={k} title="Kernel (grayscale)" />
+                </div>
+                <div className="bg-muted p-4 rounded-lg text-sm mt-4">
+                  <div className="text-foreground font-semibold">What the slider controls</div>
+                  <div className="text-muted-foreground mt-2 text-xs">
+                    {p.kind === 'gaussian' ? (
+                      <>
+                        The slider controls <strong>σ (sigma)</strong>, the standard deviation of the Gaussian kernel.
+                        Increasing σ increases the blur amount by spreading the weights over a wider area.
+                        <div className="mt-2">
+                          <strong>Current value:</strong> σ = {p.sigma?.toFixed(2) ?? '1.00'}
+                        </div>
+                        <div className="mt-2">
+                          <strong>6σ + 1 rule:</strong> For a Gaussian blur, the kernel size should ideally be approximately 6σ + 1 to capture about 99.7% of the Gaussian distribution. With σ = {p.sigma?.toFixed(2) ?? '1.00'}, the ideal kernel size would be {(() => {
+                            const idealSize = Math.ceil((p.sigma ?? 1.0) * 6 + 1);
+                            const oddSize = idealSize % 2 === 0 ? idealSize + 1 : idealSize;
+                            return `${oddSize}×${oddSize}`;
+                          })()} (currently using {p.size}×{p.size}).
+                        </div>
+                        <div className="mt-2">
+                          The Gaussian kernel weights are computed as: w(x,y) = exp(-(x² + y²) / (2σ²)), then normalized so all weights sum to 1.
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        The slider controls the <strong>kernel size</strong> directly. Increasing the size increases the blur amount by averaging over a larger neighborhood.
+                        <div className="mt-2">
+                          <strong>Current value:</strong> {p.size}×{p.size} kernel
+                        </div>
+                        <div className="mt-2">
+                          Box blur applies uniform weights (1/(size²)) to all pixels in the kernel, creating a simple average over the neighborhood.
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
                 {convAnalysis && convAnalysis.kind === 'blur' && convAnalysis.size === p.size && (
                   <div className="mt-3">
@@ -901,9 +950,42 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                     <option value={5}>5×5</option>
                   </select>
                 </div>
-                <KernelGrid kernel={k} title={`${p.size}×${p.size} amt ${p.amount.toFixed(2)}`} />
+                <div className="mt-2">
+                  <div className="text-xs text-muted-foreground mb-2">{p.size}×{p.size} kernel (amount = {p.amount.toFixed(2)}):</div>
+                  <div className="font-mono text-sm">
+                    {k.map((row, ri) => (
+                      <div key={ri} className="flex items-center">
+                        <span className="mr-1">[</span>
+                        {row.map((v, ci) => (
+                          <span key={ci} className="px-2">
+                            {Math.abs(v) < 1e-6 ? '0' : v.toFixed(3)}
+                          </span>
+                        ))}
+                        <span className="ml-1">]</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
                 <div className="mt-2">
                   <KernelPreview kernel={k} title="Kernel (grayscale)" />
+                </div>
+                <div className="bg-muted p-4 rounded-lg text-sm mt-4">
+                  <div className="text-foreground font-semibold">What the slider controls</div>
+                  <div className="text-muted-foreground mt-2 text-xs">
+                    The slider controls the <strong>amount</strong> parameter, which determines the strength of the sharpening effect.
+                    <div className="mt-2">
+                      <strong>Current value:</strong> amount = {p.amount.toFixed(2)}
+                    </div>
+                    <div className="mt-2">
+                      {p.kind === 'unsharp' ? (
+                        <>Unsharp masking enhances edges by subtracting a blurred version scaled by the amount. Higher values create stronger sharpening: sharpened = original + amount × (original - blurred).</>
+                      ) : p.kind === 'laplacian' ? (
+                        <>Laplacian sharpening applies a high-pass filter that emphasizes edges. Higher amounts increase the edge enhancement: sharpened = original + amount × Laplacian(original).</>
+                      ) : (
+                        <>Edge enhance sharpening emphasizes high-frequency details. Higher amounts create stronger edge enhancement.</>
+                      )}
+                    </div>
+                  </div>
                 </div>
                 {convAnalysis && convAnalysis.kind === 'sharpen' && convAnalysis.size === p.size && (
                   <div className="mt-3">
@@ -974,13 +1056,62 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                     <option value={5}>5×5</option>
                   </select>
                 </div>
-                <div className="flex gap-4">
-                  <KernelGrid kernel={kx} title={`${p.operator} – X`} />
-                  <KernelGrid kernel={ky} title={`${p.operator} – Y`} />
+                <div className="flex gap-8 mt-2">
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-2">{p.operator} – X:</div>
+                    <div className="font-mono text-sm">
+                      {kx.map((row, ri) => (
+                        <div key={ri} className="flex items-center">
+                          <span className="mr-1">[</span>
+                          {row.map((v, ci) => (
+                            <span key={ci} className="px-2">
+                              {v.toFixed(0)}
+                            </span>
+                          ))}
+                          <span className="ml-1">]</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground mb-2">{p.operator} – Y:</div>
+                    <div className="font-mono text-sm">
+                      {ky.map((row, ri) => (
+                        <div key={ri} className="flex items-center">
+                          <span className="mr-1">[</span>
+                          {row.map((v, ci) => (
+                            <span key={ci} className="px-2">
+                              {v.toFixed(0)}
+                            </span>
+                          ))}
+                          <span className="ml-1">]</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
                 <div className="mt-2 flex gap-2">
                   <KernelPreview kernel={kx} title="X (grayscale)" />
                   <KernelPreview kernel={ky} title="Y (grayscale)" />
+                </div>
+                <div className="bg-muted p-4 rounded-lg text-sm mt-4">
+                  <div className="text-foreground font-semibold">What the slider controls</div>
+                  <div className="text-muted-foreground mt-2 text-xs">
+                    The slider controls the <strong>kernel size</strong> for edge detection.
+                    <div className="mt-2">
+                      <strong>Current value:</strong> {p.size}×{p.size} kernel
+                    </div>
+                    <div className="mt-2">
+                      {p.operator === 'sobel' ? (
+                        <>Sobel operators compute gradients in X and Y directions using weighted differences. The {p.size}×{p.size} size determines the neighborhood used for gradient computation. Larger kernels are less sensitive to noise but may miss fine details.</>
+                      ) : (
+                        <>Prewitt operators compute gradients using uniform weights. The {p.size}×{p.size} size determines the neighborhood used for gradient computation. Larger kernels provide smoother gradients but may blur edge localization.</>
+                      )}
+                    </div>
+                    <div className="mt-2">
+                      The final edge magnitude is computed as: magnitude = √(Gx² + Gy²), where Gx and Gy are the X and Y gradient responses.
+                    </div>
+                  </div>
                 </div>
                 {convAnalysis && convAnalysis.kind === 'edge' && (
                   <div className="mt-3">
@@ -1038,9 +1169,42 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                       <option value={7}>7×7</option>
                     </select>
                   </div>
-                  <KernelGrid kernel={k} title={`Mean ${p.size}×${p.size}`} />
+                  <div className="mt-2">
+                    <div className="text-xs text-muted-foreground mb-2">Mean {p.size}×{p.size} kernel:</div>
+                    <div className="font-mono text-sm">
+                      {k.map((row, ri) => (
+                        <div key={ri} className="flex items-center">
+                          {ri === 0 ? <span className="mr-1">[</span> : ri === k.length - 1 ? <span className="mr-1">]</span> : <span className="mr-1">|</span>}
+                          {row.map((v, ci) => (
+                            <span key={ci} className="px-2">
+                              {Math.abs(v) < 1e-6 ? '0' : v.toFixed(3)}
+                            </span>
+                          ))}
+                          {ri === 0 ? <span className="ml-1">]</span> : ri === k.length - 1 ? <span className="ml-1">[</span> : <span className="ml-1">|</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   <div className="mt-2">
                     <KernelPreview kernel={k} title="Kernel (grayscale)" />
+                  </div>
+                  <div className="bg-muted p-4 rounded-lg text-sm mt-4">
+                    <div className="text-foreground font-semibold">What the slider controls</div>
+                    <div className="text-muted-foreground mt-2 text-xs">
+                      The slider controls the <strong>strength</strong> parameter, which determines how much of the filtered (denoised) image is blended with the original.
+                      <div className="mt-2">
+                        <strong>Current value:</strong> strength = {(p.strength ?? 0.5).toFixed(2)}
+                      </div>
+                      <div className="mt-2">
+                        Mean filtering applies a box blur (uniform averaging) over a {p.size}×{p.size} neighborhood. The strength parameter blends the original and filtered images: result = (1 - strength) × original + strength × filtered.
+                      </div>
+                      <div className="mt-2">
+                        When strength = 0, the original image is preserved. When strength = 1, only the filtered (averaged) image is used. Intermediate values create a smooth transition between original and denoised.
+                      </div>
+                      <div className="mt-2">
+                        <strong>Kernel size:</strong> The {p.size}×{p.size} size determines the neighborhood used for averaging. Larger kernels remove more noise but may blur fine details.
+                      </div>
+                    </div>
                   </div>
                   {convAnalysis && convAnalysis.kind === 'denoise' && convAnalysis.size === p.size && (
                     <div className="mt-3">
@@ -1091,7 +1255,21 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                     <option value={7}>7×7</option>
                   </select>
                 </div>
-                <div className="text-xs text-muted-foreground">Median uses sorted neighborhood values (no fixed kernel).</div>
+                <div className="bg-muted p-4 rounded-lg text-sm mt-4">
+                  <div className="text-foreground font-semibold">What the slider controls</div>
+                  <div className="text-muted-foreground mt-2 text-xs">
+                    <div className="mt-2">
+                      <strong>Median filter:</strong> This is a non-linear filter that replaces each pixel with the median value of its {p.size}×{p.size} neighborhood. There is no strength slider for median filtering—it directly replaces pixel values.
+                    </div>
+                    <div className="mt-2">
+                      <strong>Kernel size:</strong> The {p.size}×{p.size} size determines the neighborhood used for finding the median. Larger kernels remove more noise and outliers but may blur fine details and edges.
+                    </div>
+                    <div className="mt-2">
+                      Median filtering is particularly effective at removing salt-and-pepper noise while preserving edges better than mean filtering, as it ignores extreme values (outliers) in the neighborhood.
+                    </div>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground mt-2">Median uses sorted neighborhood values (no fixed kernel).</div>
               </>
             );
           })()}

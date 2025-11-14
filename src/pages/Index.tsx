@@ -33,7 +33,7 @@ export default function Index(_props: IndexProps) {
   const [hue, setHue] = useState(0);
   const [vibrance, setVibrance] = useState(0);
   const [linearSaturation, setLinearSaturation] = useState(false);
-  const [transformOrder, setTransformOrder] = useState<TransformationType[]>(['brightness', 'contrast', 'saturation', 'vibrance', 'hue']);
+  const [transformOrder, setTransformOrder] = useState<TransformationType[]>(['hue', 'vibrance', 'saturation', 'contrast', 'brightness']);
   const [selectedRGB, setSelectedRGB] = useState<RGB | null>(null);
   const [activeTab, setActiveTab] = useState<string>('brightness');
   const [previewOriginal, setPreviewOriginal] = useState(false);

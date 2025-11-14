@@ -213,11 +213,13 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
                   ? TRANSFORM_LABELS[kind as TransformationType]
                   : kind === 'blur' ? 'Blur' : kind === 'sharpen' ? 'Sharpen' : kind === 'edge' ? 'Edge Detect' : 'Denoise';
                 const formattedNow = formatValueFor(inst.kind, inst.params);
+                // Reverse numbering: bottom item (last in array) gets 1, top item (first in array) gets highest number
+                const displayIndex = props.pipeline.length - index - 1;
                 return (
                   <DraggableSliderCard
                     key={inst.id}
                     id={inst.id}
-                    index={index}
+                    index={displayIndex}
                     kind={inst.kind}
                     enabled={inst.enabled}
                     value={currentValue}
@@ -245,11 +247,13 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
                 const config = getTransformConfig(type);
                 const value = getValue(type, rest);
                 const onChange = getOnChange(type, rest);
+                // Reverse numbering: bottom item (last in array) gets 1, top item (first in array) gets highest number
+                const displayIndex = transformOrder.length - index - 1;
                 return (
                   <DraggableSliderCard
                     key={type}
                     id={type}
-                    index={index}
+                    index={displayIndex}
                     kind={type}
                     value={value}
                     onChange={onChange}
