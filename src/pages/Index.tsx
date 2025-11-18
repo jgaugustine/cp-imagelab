@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Upload, Layers } from "lucide-react";
 import { ImageCanvas } from "@/components/ImageCanvas";
 import { MathExplanation } from "@/components/MathExplanation";
-import { TransformationType, RGB, BlurParams, SharpenParams, EdgeParams, DenoiseParams, CustomConvParams } from "@/types/transformations";
+import { TransformationType, RGB, BlurParams, SharpenParams, EdgeParams, DenoiseParams, CustomConvParams, defaultParamsFor } from "@/types/transformations";
 import { AdjustmentLayer } from "@/components/AdjustmentLayer";
 import { downsizeImageToDataURL } from "@/lib/imageResize";
 import { FilterInstance } from "@/types/transformations";
@@ -218,12 +218,23 @@ export default function Index(_props: IndexProps) {
                 hue={hue}
                 setHue={setHue}
                 onResetAll={() => {
+                  // Reset legacy sliders
                   setBrightness(0);
                   setContrast(1);
                   setSaturation(1);
                   setHue(0);
                   setVibrance(0);
                   setLinearSaturation(false);
+                  // Reset all pipeline instances to their defaults
+                  if (_props.pipeline && _props.pipelineApi?.updateInstanceParams) {
+                    _props.pipeline.forEach(instance => {
+                      const defaultParams = defaultParamsFor(instance.kind);
+                      _props.pipelineApi?.updateInstanceParams(instance.id, (prev) => ({
+                        ...prev,
+                        params: defaultParams
+                      }));
+                    });
+                  }
                 }}
                 onCardClick={(transformType) => setActiveTab(transformType)}
                 onInstanceSelect={(instanceId) => {
@@ -257,6 +268,7 @@ export default function Index(_props: IndexProps) {
               activeTab={activeTab}
               convAnalysis={convAnalysis}
               onUpdateInstanceParams={_props.pipelineApi?.updateInstanceParams}
+              image={image}
             />
           </div>
         </div>

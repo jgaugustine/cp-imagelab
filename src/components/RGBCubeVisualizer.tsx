@@ -313,9 +313,11 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
               return -1;
             })();
         if (idx !== -1) {
-          // accumulate up to (but not including) selected
+          // accumulate all filters that come AFTER idx in the pipeline
+          // (they are applied BEFORE idx in the reversed application order)
+          // Apply them in reverse order to match ImageCanvas behavior
           let before = original;
-          for (let i = 0; i < idx; i++) {
+          for (let i = pipeline.length - 1; i > idx; i--) {
             const inst = pipeline[i];
             if (!inst.enabled) continue;
             before = computeInstanceStep(before, inst);
@@ -411,8 +413,10 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
       const idx = pipeline.findIndex(p => p.id === selectedInstanceId);
       if (idx !== -1) {
         // Compute color before the selected instance
+        // Apply all filters that come AFTER idx in the pipeline in reverse order
+        // (they are applied BEFORE idx in the reversed application order)
         let before = original;
-        for (let i = 0; i < idx; i++) {
+        for (let i = pipeline.length - 1; i > idx; i--) {
           const inst = pipeline[i];
           if (!inst.enabled) continue;
           before = computeInstanceStep(before, inst);

@@ -3,6 +3,8 @@ import RGBCubeVisualizer from "@/components/RGBCubeVisualizer";
 import { FilterInstance, TransformationType, BlurParams, SharpenParams, EdgeParams, DenoiseParams, CustomConvParams } from "@/types/transformations";
 import { KernelPreview } from "@/components/Convolution/KernelGrid";
 import ProductCube from "@/components/Convolution/ProductCube";
+import { ConvolutionRegionSelector } from "@/components/Convolution/ConvolutionRegionSelector";
+import { InteractiveConvolutionVisualizer } from "@/components/Convolution/InteractiveConvolutionVisualizer";
 import { gaussianKernel, boxKernel, sobelKernels, prewittKernels, unsharpKernel } from "@/lib/convolution";
 // Tabs removed; we render sections conditionally based on activeTab
 import { useEffect, useRef, useState, useMemo } from "react";
@@ -31,13 +33,24 @@ interface MathExplanationProps {
   onUpdateInstanceParams?: (id: string, updater: (prev: FilterInstance) => FilterInstance) => void;
   // Convolution analysis computed on click
   convAnalysis?: any | null;
+  // Original image for convolution visualization
+  image?: HTMLImageElement | null;
 }
 
-export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, pipeline, selectedInstanceId, hasImage, activeTab, onUpdateInstanceParams, convAnalysis }: MathExplanationProps) {
+export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, pipeline, selectedInstanceId, hasImage, activeTab, onUpdateInstanceParams, convAnalysis, image }: MathExplanationProps) {
   const [localLastChange, setLocalLastChange] = useState<'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | undefined>(undefined);
   const prevRef = useRef({ brightness, contrast, saturation, vibrance, hue });
   // Track input values for custom convolution kernel editing (keyed by instance ID and cell position)
   const [customConvInputValues, setCustomConvInputValues] = useState<Record<string, string>>({});
+  // Region selection state for convolution visualization
+  const [convRegionX, setConvRegionX] = useState<number | null>(null);
+  const [convRegionY, setConvRegionY] = useState<number | null>(null);
+
+  // Reset region selection when switching convolution types or instances
+  useEffect(() => {
+    setConvRegionX(null);
+    setConvRegionY(null);
+  }, [activeTab, selectedInstanceId]);
 
   useEffect(() => {
     const prev = prevRef.current;
@@ -812,9 +825,10 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           </div>
           {(() => {
             const inst = pipeline.find(p => p.id === selectedInstanceId);
-            if (!inst) return null;
+            if (!inst || inst.kind !== 'blur') return null;
             const p = inst.params as BlurParams;
             const k = p.kind === 'gaussian' ? gaussianKernel(p.size, p.sigma) : boxKernel(p.size);
+            
             return (
               <>
                 <div className="flex items-center gap-3 text-sm">
@@ -920,6 +934,34 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                     </div>
                   </div>
                 )}
+                
+                {/* Interactive visualization below existing content */}
+                {image && convRegionX !== null && convRegionY !== null && (
+                  <div className="mt-6">
+                    <InteractiveConvolutionVisualizer
+                      image={image}
+                      regionX={convRegionX}
+                      regionY={convRegionY}
+                      instance={inst}
+                      onBack={() => {
+                        setConvRegionX(null);
+                        setConvRegionY(null);
+                      }}
+                    />
+                  </div>
+                )}
+                
+                {image && convRegionX === null && convRegionY === null && (
+                  <div className="mt-6">
+                    <ConvolutionRegionSelector
+                      image={image}
+                      onRegionSelected={(x, y) => {
+                        setConvRegionX(x);
+                        setConvRegionY(y);
+                      }}
+                    />
+                  </div>
+                )}
               </>
             );
           })()}
@@ -934,9 +976,10 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           </div>
           {(() => {
             const inst = pipeline.find(p => p.id === selectedInstanceId);
-            if (!inst) return null;
+            if (!inst || inst.kind !== 'sharpen') return null;
             const p = inst.params as SharpenParams;
             const k = p.kernel ?? (p.kind === 'unsharp' ? unsharpKernel(p.amount, p.size) : p.kind === 'laplacian' ? unsharpKernel(0, 3).map(r=>[...r]) && ((): number[][] => { return [ [0, -p.amount, 0], [-p.amount, 1 + 4 * p.amount, -p.amount], [0, -p.amount, 0] ]; })() : ((): number[][] => { return [ [0, -p.amount, 0], [-p.amount, 1 + 4 * p.amount, -p.amount], [0, -p.amount, 0] ]; })());
+            
             return (
               <>
                 <div className="flex items-center gap-3 text-sm">
@@ -1020,6 +1063,34 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                     </div>
                   </div>
                 )}
+                
+                {/* Interactive visualization below existing content */}
+                {image && convRegionX !== null && convRegionY !== null && (
+                  <div className="mt-6">
+                    <InteractiveConvolutionVisualizer
+                      image={image}
+                      regionX={convRegionX}
+                      regionY={convRegionY}
+                      instance={inst}
+                      onBack={() => {
+                        setConvRegionX(null);
+                        setConvRegionY(null);
+                      }}
+                    />
+                  </div>
+                )}
+                
+                {image && convRegionX === null && convRegionY === null && (
+                  <div className="mt-6">
+                    <ConvolutionRegionSelector
+                      image={image}
+                      onRegionSelected={(x, y) => {
+                        setConvRegionX(x);
+                        setConvRegionY(y);
+                      }}
+                    />
+                  </div>
+                )}
               </>
             );
           })()}
@@ -1034,9 +1105,10 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           </div>
           {(() => {
             const inst = pipeline.find(p => p.id === selectedInstanceId);
-            if (!inst) return null;
+            if (!inst || inst.kind !== 'edge') return null;
             const p = inst.params as EdgeParams;
             const { kx, ky } = p.operator === 'sobel' ? sobelKernels() : prewittKernels();
+            
             return (
               <>
                 <div className="flex items-center gap-3 text-sm">
@@ -1138,6 +1210,34 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                     </div>
                   </div>
                 )}
+                
+                {/* Interactive visualization below existing content */}
+                {image && convRegionX !== null && convRegionY !== null && (
+                  <div className="mt-6">
+                    <InteractiveConvolutionVisualizer
+                      image={image}
+                      regionX={convRegionX}
+                      regionY={convRegionY}
+                      instance={inst}
+                      onBack={() => {
+                        setConvRegionX(null);
+                        setConvRegionY(null);
+                      }}
+                    />
+                  </div>
+                )}
+                
+                {image && convRegionX === null && convRegionY === null && (
+                  <div className="mt-6">
+                    <ConvolutionRegionSelector
+                      image={image}
+                      onRegionSelected={(x, y) => {
+                        setConvRegionX(x);
+                        setConvRegionY(y);
+                      }}
+                    />
+                  </div>
+                )}
               </>
             );
           })()}
@@ -1152,8 +1252,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           </div>
           {(() => {
             const inst = pipeline.find(p => p.id === selectedInstanceId);
-            if (!inst) return null;
+            if (!inst || inst.kind !== 'denoise') return null;
             const p = inst.params as DenoiseParams;
+            
             if (p.kind === 'mean') {
               const k = boxKernel(p.size);
               return (
@@ -1239,6 +1340,34 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                       </div>
                     </div>
                   )}
+                  
+                  {/* Interactive visualization below existing content (only for mean filter) */}
+                  {image && convRegionX !== null && convRegionY !== null && (
+                    <div className="mt-6">
+                      <InteractiveConvolutionVisualizer
+                        image={image}
+                        regionX={convRegionX}
+                        regionY={convRegionY}
+                        instance={inst}
+                        onBack={() => {
+                          setConvRegionX(null);
+                          setConvRegionY(null);
+                        }}
+                      />
+                    </div>
+                  )}
+                  
+                  {image && convRegionX === null && convRegionY === null && (
+                    <div className="mt-6">
+                      <ConvolutionRegionSelector
+                        image={image}
+                        onRegionSelected={(x, y) => {
+                          setConvRegionX(x);
+                          setConvRegionY(y);
+                        }}
+                      />
+                    </div>
+                  )}
                 </>
               );
             }
@@ -1288,7 +1417,7 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           </div>
           {(() => {
             const inst = pipeline.find(p => p.id === selectedInstanceId);
-            if (!inst) return null;
+            if (!inst || inst.kind !== 'customConv') return null;
             const p = inst.params as CustomConvParams;
             const k = p.kernel;
             
