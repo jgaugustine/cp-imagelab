@@ -5,6 +5,7 @@ import { KernelPreview } from "@/components/Convolution/KernelGrid";
 import ProductCube from "@/components/Convolution/ProductCube";
 import { ConvolutionRegionSelector } from "@/components/Convolution/ConvolutionRegionSelector";
 import { InteractiveConvolutionVisualizer } from "@/components/Convolution/InteractiveConvolutionVisualizer";
+import { ColorPointCloud } from "@/components/ColorPointCloud";
 import { gaussianKernel, boxKernel, sobelKernels, prewittKernels, unsharpKernel } from "@/lib/convolution";
 // Tabs removed; we render sections conditionally based on activeTab
 import { useEffect, useRef, useState, useMemo } from "react";

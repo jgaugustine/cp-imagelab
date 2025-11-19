@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FilterInstance, TransformationType } from "@/types/transformations";
 
 type Mode = 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | 'all';
@@ -64,17 +64,75 @@ function toSRGB(c: number) {
   return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
 }
 
-function rotatePoint(x: number, y: number, z: number, yawDeg: number, pitchDeg: number) {
+// Quaternion-based rotation for smoother, gimbal-lock-free rotation
+type Quaternion = [number, number, number, number]; // [w, x, y, z]
+
+function quaternionMultiply(q1: Quaternion, q2: Quaternion): Quaternion {
+  const [w1, x1, y1, z1] = q1;
+  const [w2, x2, y2, z2] = q2;
+  return [
+    w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+    w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+    w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+    w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+  ];
+}
+
+function quaternionFromAxisAngle(axis: [number, number, number], angle: number): Quaternion {
+  const halfAngle = angle / 2;
+  const s = Math.sin(halfAngle);
+  return [
+    Math.cos(halfAngle),
+    axis[0] * s,
+    axis[1] * s,
+    axis[2] * s,
+  ];
+}
+
+function quaternionToEuler(q: Quaternion): { yaw: number; pitch: number } {
+  const [w, x, y, z] = q;
+  // Convert quaternion to yaw/pitch (roll is not used)
+  const sinP = 2 * (w * y - z * x);
+  const pitch = Math.asin(Math.max(-1, Math.min(1, sinP)));
+  
+  const sinY = 2 * (w * z + x * y);
+  const cosY = 1 - 2 * (y * y + z * z);
+  const yaw = Math.atan2(sinY, cosY);
+  
+  return { yaw: (yaw * 180) / Math.PI, pitch: (pitch * 180) / Math.PI };
+}
+
+function eulerToQuaternion(yawDeg: number, pitchDeg: number): Quaternion {
   const yaw = (yawDeg * Math.PI) / 180;
   const pitch = (pitchDeg * Math.PI) / 180;
-  const cosY = Math.cos(yaw), sinY = Math.sin(yaw);
-  let rx = cosY * x + sinY * z;
-  let ry = y;
-  let rz = -sinY * x + cosY * z;
-  const cosP = Math.cos(pitch), sinP = Math.sin(pitch);
-  const ry2 = cosP * ry - sinP * rz;
-  const rz2 = sinP * ry + cosP * rz;
-  return { x: rx, y: ry2, z: rz2 };
+  
+  const cy = Math.cos(yaw / 2);
+  const sy = Math.sin(yaw / 2);
+  const cp = Math.cos(pitch / 2);
+  const sp = Math.sin(pitch / 2);
+  
+  return [
+    cy * cp,
+    cy * sp,
+    sy * cp,
+    -sy * sp,
+  ];
+}
+
+function rotatePoint(x: number, y: number, z: number, q: Quaternion) {
+  const [w, qx, qy, qz] = q;
+  // Rotate vector using quaternion: v' = q * v * q^-1
+  // For unit quaternion, q^-1 = [w, -x, -y, -z]
+  const ix = w * x + qy * z - qz * y;
+  const iy = w * y + qz * x - qx * z;
+  const iz = w * z + qx * y - qy * x;
+  const iw = -qx * x - qy * y - qz * z;
+  
+  return {
+    x: ix * w + iw * -qx + iy * -qz - iz * -qy,
+    y: iy * w + iw * -qy + iz * -qx - ix * -qz,
+    z: iz * w + iw * -qz + ix * -qy - iy * -qx,
+  };
 }
 
 function project(x: number, y: number, z: number, width: number, height: number, zoom: number) {
@@ -119,8 +177,11 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
   const [yaw, setYaw] = useState<number>(-35);
   const [pitch, setPitch] = useState<number>(20);
   const [zoom, setZoom] = useState<number>(1);
+  const [isDragging, setIsDragging] = useState(false);
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef<{ x: number; y: number } | null>(null);
+  const rotationQuaternionRef = useRef<Quaternion>(eulerToQuaternion(-35, 20));
+  const startSphereRef = useRef<[number, number, number] | null>(null);
   const width = 320;
   const height = 220;
   const prevParamsRef = useRef<{ brightness?: number; contrast?: number; saturation?: number; vibrance?: number; hue?: number; linearSaturation?: boolean }>({ ...params });
@@ -351,7 +412,7 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
 
     const rp = (x: number, y: number, z: number) => {
       const cx = 127.5, cy = 127.5, cz = 127.5;
-      const r = rotatePoint(x - cx, y - cy, z - cz, yaw, pitch);
+      const r = rotatePoint(x - cx, y - cy, z - cz, rotationQuaternionRef.current);
       return project(r.x + cx, r.y + cy, r.z + cz, width, height, zoom);
     };
 
@@ -475,53 +536,216 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, paramsBrightness, paramsContrast, paramsSaturation, paramsVibrance, paramsHue, paramsLinearSaturation, selectedRGB, yaw, pitch, zoom, showAllChanges, lastChange, transformOrder, hasImage, pipeline, selectedInstanceId, isVisible]);
 
+  // Arcball: convert screen coordinates to sphere coordinates
+  function screenToSphere(x: number, y: number, rect: DOMRect): [number, number, number] | null {
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const radius = Math.min(rect.width, rect.height) / 2;
+    
+    const dx = (x - centerX) / radius;
+    const dy = (y - centerY) / radius;
+    const d2 = dx * dx + dy * dy;
+    
+    if (d2 > 1) {
+      // Outside sphere, project to edge
+      const d = Math.sqrt(d2);
+      return [dx / d, dy / d, 0];
+    } else {
+      // Inside sphere
+      const dz = Math.sqrt(1 - d2);
+      return [dx, dy, dz];
+    }
+  }
+
+  // Sync quaternion with yaw/pitch when they change (but not during dragging)
+  useEffect(() => {
+    if (!isDraggingRef.current) {
+      rotationQuaternionRef.current = eulerToQuaternion(yaw, pitch);
+    }
+  }, [yaw, pitch]);
+
   useEffect(() => {
     // Only set up event listeners when we have an image (canvas exists)
     if (!hasImage) return;
     
     const canvas = canvasRef.current;
     if (!canvas) return;
+    
     const onDown = (e: MouseEvent) => {
-      isDraggingRef.current = true;
-      lastPosRef.current = { x: e.clientX, y: e.clientY };
+      const rect = canvas.getBoundingClientRect();
+      const sphere = screenToSphere(e.clientX, e.clientY, rect);
+      if (sphere) {
+        isDraggingRef.current = true;
+        setIsDragging(true);
+        lastPosRef.current = { x: e.clientX, y: e.clientY };
+        startSphereRef.current = sphere;
+      }
     };
+    
     const onMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current || !lastPosRef.current) return;
-      const dx = e.clientX - lastPosRef.current.x;
-      const dy = e.clientY - lastPosRef.current.y;
-      lastPosRef.current = { x: e.clientX, y: e.clientY };
-      setYaw(prev => prev + dx * 0.4);
-      setPitch(prev => Math.max(-89, Math.min(89, prev - dy * 0.3)));
+      if (!isDraggingRef.current || !startSphereRef.current) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const currentSphere = screenToSphere(e.clientX, e.clientY, rect);
+      if (!currentSphere) return;
+      
+      // Calculate rotation axis and angle
+      const [sx, sy, sz] = startSphereRef.current;
+      const [cx, cy, cz] = currentSphere;
+      
+      // Cross product gives rotation axis
+      const axis: [number, number, number] = [
+        sy * cz - sz * cy,
+        sz * cx - sx * cz,
+        sx * cy - sy * cx,
+      ];
+      
+      const axisLength = Math.sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
+      if (axisLength < 0.0001) return; // Too small movement
+      
+      // Normalize axis
+      const normalizedAxis: [number, number, number] = [
+        axis[0] / axisLength,
+        axis[1] / axisLength,
+        axis[2] / axisLength,
+      ];
+      
+      // Dot product gives angle
+      const dot = sx * cx + sy * cy + sz * cz;
+      const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 0.8; // Scale for sensitivity
+      
+      // Create rotation quaternion
+      const deltaQ = quaternionFromAxisAngle(normalizedAxis, angle);
+      
+      // Apply rotation
+      rotationQuaternionRef.current = quaternionMultiply(deltaQ, rotationQuaternionRef.current);
+      
+      // Convert back to Euler for state
+      const euler = quaternionToEuler(rotationQuaternionRef.current);
+      setYaw(euler.yaw);
+      setPitch(euler.pitch);
+      
+      // Update start position for next frame
+      startSphereRef.current = currentSphere;
     };
-    const onUp = () => { isDraggingRef.current = false; lastPosRef.current = null; };
+    
+    const onUp = () => {
+      isDraggingRef.current = false;
+      setIsDragging(false);
+      lastPosRef.current = null;
+      startSphereRef.current = null;
+    };
+    
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const factor = Math.exp(-e.deltaY * 0.0015);
       setZoom(prev => Math.max(0.5, Math.min(3, prev * factor)));
     };
+    
     canvas.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     canvas.addEventListener('wheel', onWheel, { passive: false });
+    
+    // Touch handlers with pinch-to-zoom support
+    let initialDistance = 0;
+    let initialZoom = zoom;
+    
     const onTDown = (e: TouchEvent) => {
-      if (e.touches.length !== 1) return;
-      const t = e.touches[0];
-      isDraggingRef.current = true;
-      lastPosRef.current = { x: t.clientX, y: t.clientY };
+      e.preventDefault();
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const sphere = screenToSphere(t.clientX, t.clientY, rect);
+        if (sphere) {
+          isDraggingRef.current = true;
+          setIsDragging(true);
+          lastPosRef.current = { x: t.clientX, y: t.clientY };
+          startSphereRef.current = sphere;
+        }
+      } else if (e.touches.length === 2) {
+        // Pinch to zoom
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        initialDistance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        initialZoom = zoom;
+        isDraggingRef.current = false;
+        setIsDragging(false);
+      }
     };
+    
     const onTMove = (e: TouchEvent) => {
-      if (!isDraggingRef.current || !lastPosRef.current || e.touches.length !== 1) return;
-      const t = e.touches[0];
-      const dx = t.clientX - lastPosRef.current.x;
-      const dy = t.clientY - lastPosRef.current.y;
-      lastPosRef.current = { x: t.clientX, y: t.clientY };
-      setYaw(prev => prev + dx * 0.4);
-      setPitch(prev => Math.max(-89, Math.min(89, prev - dy * 0.3)));
+      e.preventDefault();
+      if (e.touches.length === 1 && isDraggingRef.current && startSphereRef.current) {
+        const t = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const currentSphere = screenToSphere(t.clientX, t.clientY, rect);
+        if (!currentSphere) return;
+        
+        const [sx, sy, sz] = startSphereRef.current;
+        const [cx, cy, cz] = currentSphere;
+        
+        const axis: [number, number, number] = [
+          sy * cz - sz * cy,
+          sz * cx - sx * cz,
+          sx * cy - sy * cx,
+        ];
+        
+        const axisLength = Math.sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
+        if (axisLength < 0.0001) return;
+        
+        const normalizedAxis: [number, number, number] = [
+          axis[0] / axisLength,
+          axis[1] / axisLength,
+          axis[2] / axisLength,
+        ];
+        
+        const dot = sx * cx + sy * cy + sz * cz;
+        const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 0.8;
+        
+        const deltaQ = quaternionFromAxisAngle(normalizedAxis, angle);
+        rotationQuaternionRef.current = quaternionMultiply(deltaQ, rotationQuaternionRef.current);
+        
+        const euler = quaternionToEuler(rotationQuaternionRef.current);
+        setYaw(euler.yaw);
+        setPitch(euler.pitch);
+        
+        startSphereRef.current = currentSphere;
+      } else if (e.touches.length === 2 && initialDistance > 0) {
+        // Pinch to zoom
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const currentDistance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const scale = currentDistance / initialDistance;
+        setZoom(Math.max(0.5, Math.min(3, initialZoom * scale)));
+      }
     };
-    const onTUp = () => { isDraggingRef.current = false; lastPosRef.current = null; };
-    canvas.addEventListener('touchstart', onTDown, { passive: true });
-    window.addEventListener('touchmove', onTMove, { passive: true });
+    
+    const onTUp = (e: TouchEvent) => {
+      if (e.touches.length === 0) {
+        isDraggingRef.current = false;
+        setIsDragging(false);
+        lastPosRef.current = null;
+        startSphereRef.current = null;
+        initialDistance = 0;
+      } else if (e.touches.length === 1) {
+        // Switch from pinch to rotate
+        const t = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const sphere = screenToSphere(t.clientX, t.clientY, rect);
+        if (sphere) {
+          isDraggingRef.current = true;
+          setIsDragging(true);
+          lastPosRef.current = { x: t.clientX, y: t.clientY };
+          startSphereRef.current = sphere;
+        }
+      }
+    };
+    
+    canvas.addEventListener('touchstart', onTDown, { passive: false });
+    window.addEventListener('touchmove', onTMove, { passive: false });
     window.addEventListener('touchend', onTUp);
+    
     return () => {
       canvas.removeEventListener('mousedown', onDown);
       window.removeEventListener('mousemove', onMove);
@@ -548,10 +772,20 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
   return (
     <div className="space-y-2">
       <div className="bg-muted rounded-lg p-2 flex items-center justify-center">
-        <canvas ref={canvasRef} width={width} height={height} style={{ width: '100%', height: 'auto', cursor: 'grab' }} />
+        <canvas 
+          ref={canvasRef} 
+          width={width} 
+          height={height} 
+          style={{ 
+            width: '100%', 
+            height: 'auto', 
+            cursor: isDragging ? 'grabbing' : 'grab',
+            transition: 'cursor 0.1s ease'
+          }} 
+        />
       </div>
       <div className="text-[11px] font-mono text-muted-foreground">
-        Drag to rotate view. Scroll to zoom. Legend: original vector = green, transformed = fuchsia, auxiliary guides = cyan, gray axis = slate.
+        Drag to rotate view. Scroll to zoom. Pinch to zoom on touch. Legend: original vector = green, transformed = fuchsia, auxiliary guides = cyan, gray axis = slate.
       </div>
     </div>
   );

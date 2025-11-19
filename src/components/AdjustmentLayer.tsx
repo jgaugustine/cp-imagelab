@@ -290,6 +290,27 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
         <RotateCcw className="w-4 h-4 mr-2" />
         Reset All
       </Button>
+
+      <Dialog open={isPointCloudOpen} onOpenChange={setIsPointCloudOpen}>
+        <DialogContent className="max-w-4xl w-full h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Color Point Cloud</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <ColorPointCloud
+              image={image || null}
+              pipeline={pipeline}
+              brightness={rest.brightness}
+              contrast={rest.contrast}
+              saturation={rest.saturation}
+              hue={rest.hue}
+              linearSaturation={linearSaturation}
+              vibrance={rest.vibrance}
+              transformOrder={transformOrder}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

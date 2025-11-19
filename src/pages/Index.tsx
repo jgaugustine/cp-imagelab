@@ -142,6 +142,8 @@ export default function Index(_props: IndexProps) {
                 onDuplicateInstance={_props.pipelineApi?.duplicateInstance}
                 onDeleteInstance={_props.pipelineApi?.deleteInstance}
                 onToggleInstance={_props.pipelineApi?.toggleInstance}
+                image={image}
+                linearSaturation={linearSaturation}
                 onChangeInstanceParams={(id, kind, nextValue) => {
                   _props.pipelineApi?.updateInstanceParams?.(id, (prev) => {
                     if (kind === 'vibrance') return { ...prev, params: { vibrance: nextValue } };
