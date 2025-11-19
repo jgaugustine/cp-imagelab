@@ -99,65 +99,122 @@ function createTextSprite(text: string, color: string = '#ffffff'): THREE.Sprite
   return sprite;
 }
 
-// Helper function to create labeled axes
+// Helper function to create a simple arrow using a cone only (simpler, avoids stack issues)
+function createArrow(direction: THREE.Vector3, length: number, color: number): THREE.Mesh {
+  // Normalize direction without mutating the original
+  const dir = direction.clone().normalize();
+  
+  // Create arrowhead using a cone
+  const coneRadius = Math.max(1, length * 0.05);
+  const coneGeometry = new THREE.ConeGeometry(coneRadius, length, 8, 1);
+  const coneMaterial = new THREE.MeshBasicMaterial({ 
+    color,
+    side: THREE.DoubleSide,
+    depthTest: true,
+    depthWrite: true
+  });
+  const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+  cone.visible = true;
+  cone.renderOrder = 1000;
+  
+  // Position cone at the end point
+  const endPoint = new THREE.Vector3(
+    dir.x * length,
+    dir.y * length,
+    dir.z * length
+  );
+  cone.position.copy(endPoint);
+  
+  // Rotate cone to point in the direction
+  const up = new THREE.Vector3(0, 1, 0);
+  const quaternion = new THREE.Quaternion();
+  quaternion.setFromUnitVectors(up, dir);
+  cone.quaternion.copy(quaternion);
+  
+  return cone;
+}
+
+// Helper function to create labeled axes that extend in both directions
 function createLabeledAxes(
   center: [number, number, number], 
   axisLength: number = 50,
   labels: { x: string; y: string; z: string } = { x: 'X', y: 'Y', z: 'Z' }
 ): THREE.Group {
   const group = new THREE.Group();
+  group.visible = true;
   
   const xLabel = labels.x;
   const yLabel = labels.y;
   const zLabel = labels.z;
   
-  // X-axis (red) - ArrowHelper includes both line and arrowhead
-  const xArrow = new THREE.ArrowHelper(
-    new THREE.Vector3(1, 0, 0),
-    new THREE.Vector3(0, 0, 0),
-    axisLength,
-    0xff0000,
-    axisLength * 0.2,
-    axisLength * 0.1
-  );
+  // X-axis (red) - extends in both +X and -X directions
+  const xGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-axisLength, 0, 0),
+    new THREE.Vector3(axisLength, 0, 0)
+  ]);
+  const xMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 2 });
+  const xLine = new THREE.Line(xGeometry, xMaterial);
+  group.add(xLine);
+  
+  // X-axis arrow (positive direction)
+  const xArrow = createArrow(new THREE.Vector3(1, 0, 0), axisLength * 0.15, 0xff0000);
+  xArrow.position.set(axisLength * 0.85, 0, 0);
   group.add(xArrow);
   
   // X-axis label
-  const xSprite = createTextSprite(xLabel, '#ff0000');
-  xSprite.position.set(axisLength * 1.2, 0, 0);
-  group.add(xSprite);
+  try {
+    const xSprite = createTextSprite(xLabel, '#ff0000');
+    xSprite.position.set(axisLength * 1.1, 0, 0);
+    group.add(xSprite);
+  } catch (e) {
+    console.warn('Failed to create X-axis label:', e);
+  }
   
-  // Y-axis (green) - ArrowHelper includes both line and arrowhead
-  const yArrow = new THREE.ArrowHelper(
-    new THREE.Vector3(0, 1, 0),
-    new THREE.Vector3(0, 0, 0),
-    axisLength,
-    0x00ff00,
-    axisLength * 0.2,
-    axisLength * 0.1
-  );
+  // Y-axis (green) - extends in both +Y and -Y directions
+  const yGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, -axisLength, 0),
+    new THREE.Vector3(0, axisLength, 0)
+  ]);
+  const yMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 2 });
+  const yLine = new THREE.Line(yGeometry, yMaterial);
+  group.add(yLine);
+  
+  // Y-axis arrow (positive direction)
+  const yArrow = createArrow(new THREE.Vector3(0, 1, 0), axisLength * 0.15, 0x00ff00);
+  yArrow.position.set(0, axisLength * 0.85, 0);
   group.add(yArrow);
   
   // Y-axis label
-  const ySprite = createTextSprite(yLabel, '#00ff00');
-  ySprite.position.set(0, axisLength * 1.2, 0);
-  group.add(ySprite);
+  try {
+    const ySprite = createTextSprite(yLabel, '#00ff00');
+    ySprite.position.set(0, axisLength * 1.1, 0);
+    group.add(ySprite);
+  } catch (e) {
+    console.warn('Failed to create Y-axis label:', e);
+  }
   
-  // Z-axis (blue) - ArrowHelper includes both line and arrowhead
-  const zArrow = new THREE.ArrowHelper(
-    new THREE.Vector3(0, 0, 1),
-    new THREE.Vector3(0, 0, 0),
-    axisLength,
-    0x0000ff,
-    axisLength * 0.2,
-    axisLength * 0.1
-  );
+  // Z-axis (blue) - extends in both +Z and -Z directions
+  const zGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, -axisLength),
+    new THREE.Vector3(0, 0, axisLength)
+  ]);
+  const zMaterial = new THREE.LineBasicMaterial({ color: 0x0000ff, linewidth: 2 });
+  const zLine = new THREE.Line(zGeometry, zMaterial);
+  group.add(zLine);
+  
+  // Z-axis arrow (positive direction)
+  const zArrow = createArrow(new THREE.Vector3(0, 0, 1), axisLength * 0.15, 0x0000ff);
+  zArrow.position.set(0, 0, axisLength * 0.85);
   group.add(zArrow);
   
   // Z-axis label
-  const zSprite = createTextSprite(zLabel, '#0000ff');
-  zSprite.position.set(0, 0, axisLength * 1.2);
-  group.add(zSprite);
+  try {
+    const zSprite = createTextSprite(zLabel, '#0000ff');
+    zSprite.position.set(0, 0, axisLength * 1.1);
+    group.add(zSprite);
+  } catch (e) {
+    console.warn('Failed to create Z-axis label:', e);
+  }
   
   // Position the group at the center
   group.position.set(center[0], center[1], center[2]);
@@ -771,10 +828,14 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
     }
   }, [image, pipeline, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder, colorSpace]);
 
-  // Calculate center of point cloud
-  const cloudCenter = useMemo(() => {
+  // Calculate center of point cloud - use a ref to avoid dependency issues
+  const cloudCenterRef = useRef<[number, number, number]>([0, 0, 0]);
+  
+  // Update center when pixels change, but don't create new array references
+  useEffect(() => {
     if (!transformedPixels || transformedPixels.length === 0) {
-      return [0, 0, 0] as [number, number, number];
+      cloudCenterRef.current = [0, 0, 0];
+      return;
     }
     
     let sumX = 0, sumY = 0, sumZ = 0;
@@ -785,8 +846,21 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
     });
     
     const count = transformedPixels.length;
-    return [sumX / count, sumY / count, sumZ / count] as [number, number, number];
+    const center: [number, number, number] = [sumX / count, sumY / count, sumZ / count];
+    
+    // Only update if significantly different (avoid floating point noise)
+    const prev = cloudCenterRef.current;
+    const threshold = 0.1;
+    if (Math.abs(center[0] - prev[0]) > threshold || 
+        Math.abs(center[1] - prev[1]) > threshold || 
+        Math.abs(center[2] - prev[2]) > threshold) {
+      cloudCenterRef.current[0] = center[0];
+      cloudCenterRef.current[1] = center[1];
+      cloudCenterRef.current[2] = center[2];
+    }
   }, [transformedPixels]);
+  
+  const cloudCenter = cloudCenterRef.current;
 
   // Get axis labels based on color space
   const getAxisLabels = (space: ColorSpace): { x: string; y: string; z: string } => {
@@ -1296,52 +1370,139 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
   // Manage axes visibility and updates
   useEffect(() => {
     if (!sceneRef.current) return;
-
-    // Remove existing axes if any
-    if (axesGroupRef.current) {
-      sceneRef.current.remove(axesGroupRef.current);
-      // Dispose of geometries and materials
-      axesGroupRef.current.traverse((child) => {
-        if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) {
-            if (Array.isArray(child.material)) {
-              child.material.forEach(m => m.dispose());
-            } else {
-              child.material.dispose();
+    
+    // Early return if we don't need axes
+    if (!showAxes || !transformedPixels || transformedPixels.length === 0) {
+      // Remove axes if toggle is off
+      if (axesGroupRef.current) {
+        const axesToRemove = axesGroupRef.current;
+        axesGroupRef.current = null;
+        sceneRef.current.remove(axesToRemove);
+        // Simple disposal without traverse to avoid stack overflow
+        if (axesToRemove.children) {
+          axesToRemove.children.forEach((child) => {
+            if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+              if (child.geometry) child.geometry.dispose();
+              if (child.material) {
+                if (Array.isArray(child.material)) {
+                  child.material.forEach(m => m.dispose());
+                } else {
+                  child.material.dispose();
+                }
+              }
+            } else if (child instanceof THREE.Sprite) {
+              if (child.material) {
+                if (child.material.map) child.material.map.dispose();
+                child.material.dispose();
+              }
+            } else if (child instanceof THREE.Group) {
+              // Dispose of group children
+              child.children.forEach((grandchild) => {
+                if (grandchild instanceof THREE.Mesh || grandchild instanceof THREE.Line) {
+                  if (grandchild.geometry) grandchild.geometry.dispose();
+                  if (grandchild.material) {
+                    if (Array.isArray(grandchild.material)) {
+                      grandchild.material.forEach(m => m.dispose());
+                    } else {
+                      grandchild.material.dispose();
+                    }
+                  }
+                }
+              });
             }
-          }
-        } else if (child instanceof THREE.Sprite) {
-          if (child.material) {
-            if (child.material.map) child.material.map.dispose();
-            child.material.dispose();
-          }
-        } else if (child instanceof THREE.ArrowHelper) {
-          // ArrowHelper manages its own disposal
+          });
         }
-      });
-      axesGroupRef.current = null;
+      }
+      
+      // Remove test axes
+      const testAxes = sceneRef.current.getObjectByName('testAxes');
+      if (testAxes) {
+        sceneRef.current.remove(testAxes);
+      }
+      return;
     }
 
+    // Remove existing axes if any (before creating new ones)
+    if (axesGroupRef.current) {
+      const axesToRemove = axesGroupRef.current;
+      axesGroupRef.current = null;
+      sceneRef.current.remove(axesToRemove);
+      // Simple disposal without deep traverse
+      if (axesToRemove.children) {
+        axesToRemove.children.forEach((child) => {
+          if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) {
+              if (Array.isArray(child.material)) {
+                child.material.forEach(m => m.dispose());
+              } else {
+                child.material.dispose();
+              }
+            }
+          } else if (child instanceof THREE.Sprite) {
+            if (child.material) {
+              if (child.material.map) child.material.map.dispose();
+              child.material.dispose();
+            }
+          } else if (child instanceof THREE.Group) {
+            child.children.forEach((grandchild) => {
+              if (grandchild instanceof THREE.Mesh || grandchild instanceof THREE.Line) {
+                if (grandchild.geometry) grandchild.geometry.dispose();
+                if (grandchild.material) {
+                  if (Array.isArray(grandchild.material)) {
+                    grandchild.material.forEach(m => m.dispose());
+                  } else {
+                    grandchild.material.dispose();
+                  }
+                }
+              }
+            });
+          }
+        });
+      }
+    }
+    
+
     // Add axes if toggle is on
-    if (showAxes && transformedPixels && transformedPixels.length > 0) {
+    try {
       const labels = getAxisLabels(colorSpace);
       // Calculate axis length based on point cloud spread
       const positions = transformedPixels.map(p => p.position);
-      const xs = positions.map(p => p[0]);
-      const ys = positions.map(p => p[1]);
-      const zs = positions.map(p => p[2]);
-      const spreadX = Math.max(...xs) - Math.min(...xs);
-      const spreadY = Math.max(...ys) - Math.min(...ys);
-      const spreadZ = Math.max(...zs) - Math.min(...zs);
-      const maxSpread = Math.max(spreadX, spreadY, spreadZ);
-      const axisLength = Math.max(30, maxSpread * 0.15); // At least 30 units, or 15% of max spread
+      if (positions.length === 0) return;
       
+      // Calculate min/max without using spread operator to avoid stack overflow
+      let minX = Infinity, maxX = -Infinity;
+      let minY = Infinity, maxY = -Infinity;
+      let minZ = Infinity, maxZ = -Infinity;
+      
+      for (let i = 0; i < positions.length; i++) {
+        const pos = positions[i];
+        if (pos[0] < minX) minX = pos[0];
+        if (pos[0] > maxX) maxX = pos[0];
+        if (pos[1] < minY) minY = pos[1];
+        if (pos[1] > maxY) maxY = pos[1];
+        if (pos[2] < minZ) minZ = pos[2];
+        if (pos[2] > maxZ) maxZ = pos[2];
+      }
+        
+      const spreadX = maxX - minX;
+      const spreadY = maxY - minY;
+      const spreadZ = maxZ - minZ;
+      const maxSpread = Math.max(spreadX, spreadY, spreadZ);
+      // Make axes more visible - use 30% of spread or minimum 50 units
+      const axisLength = Math.max(50, maxSpread * 0.3);
+      
+      // Create axes at the cloud center
       const axes = createLabeledAxes(cloudCenter, axisLength, labels);
       axesGroupRef.current = axes;
+      axes.renderOrder = 1000; // Ensure axes render on top
       sceneRef.current.add(axes);
+      
+      console.log('Axes created successfully');
+    } catch (error) {
+      console.error('Error creating axes:', error);
     }
-  }, [showAxes, cloudCenter, colorSpace, transformedPixels]);
+  }, [showAxes, colorSpace, transformedPixels]);
 
   if (!image) {
     return (
