@@ -1,8 +1,72 @@
-import { useEffect, useRef, useMemo } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import * as THREE from 'three';
 import { TransformationType, RGB, FilterInstance, BlurParams, SharpenParams, EdgeParams, DenoiseParams, CustomConvParams } from '@/types/transformations';
 import { cpuConvolutionBackend } from '@/lib/convolutionBackend';
 import { gaussianKernel, boxKernel, sobelKernels, prewittKernels, unsharpKernel } from '@/lib/convolution';
+
+// Quaternion-based rotation for smoother, gimbal-lock-free rotation
+type Quaternion = [number, number, number, number]; // [w, x, y, z]
+
+function quaternionMultiply(q1: Quaternion, q2: Quaternion): Quaternion {
+  const [w1, x1, y1, z1] = q1;
+  const [w2, x2, y2, z2] = q2;
+  return [
+    w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+    w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+    w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+    w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
+  ];
+}
+
+function quaternionFromAxisAngle(axis: [number, number, number], angle: number): Quaternion {
+  const halfAngle = angle / 2;
+  const s = Math.sin(halfAngle);
+  return [
+    Math.cos(halfAngle),
+    axis[0] * s,
+    axis[1] * s,
+    axis[2] * s,
+  ];
+}
+
+function quaternionToEuler(q: Quaternion): { yaw: number; pitch: number } {
+  const [w, x, y, z] = q;
+  const sinP = 2 * (w * y - z * x);
+  const pitch = Math.asin(Math.max(-1, Math.min(1, sinP)));
+  const sinY = 2 * (w * z + x * y);
+  const cosY = 1 - 2 * (y * y + z * z);
+  const yaw = Math.atan2(sinY, cosY);
+  return { yaw: (yaw * 180) / Math.PI, pitch: (pitch * 180) / Math.PI };
+}
+
+function eulerToQuaternion(yawDeg: number, pitchDeg: number): Quaternion {
+  const yaw = (yawDeg * Math.PI) / 180;
+  const pitch = (pitchDeg * Math.PI) / 180;
+  const cy = Math.cos(yaw / 2);
+  const sy = Math.sin(yaw / 2);
+  const cp = Math.cos(pitch / 2);
+  const sp = Math.sin(pitch / 2);
+  return [
+    cy * cp,
+    cy * sp,
+    sy * cp,
+    -sy * sp,
+  ];
+}
+
+function rotateVector(x: number, y: number, z: number, q: Quaternion): THREE.Vector3 {
+  const [w, qx, qy, qz] = q;
+  // Rotate vector using quaternion: v' = q * v * q^-1
+  const ix = w * x + qy * z - qz * y;
+  const iy = w * y + qz * x - qx * z;
+  const iz = w * z + qx * y - qy * x;
+  const iw = -qx * x - qy * y - qz * z;
+  return new THREE.Vector3(
+    ix * w + iw * -qx + iy * -qz - iz * -qy,
+    iy * w + iw * -qy + iz * -qx - ix * -qz,
+    iz * w + iw * -qz + ix * -qy - iy * -qx
+  );
+}
 
 interface ColorPointCloudProps {
   image: HTMLImageElement | null;
@@ -233,6 +297,40 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const pointsRef = useRef<THREE.Points | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  
+  // 3D navigation state
+  const [yaw, setYaw] = useState<number>(-35);
+  const [pitch, setPitch] = useState<number>(20);
+  const [distance, setDistance] = useState<number>(200);
+  const [target, setTarget] = useState<[number, number, number]>([0, 0, 0]);
+  const [isDragging, setIsDragging] = useState(false);
+  const isDraggingRef = useRef(false);
+  const rotationQuaternionRef = useRef<Quaternion>(eulerToQuaternion(-35, 20));
+  const startSphereRef = useRef<[number, number, number] | null>(null);
+  const distanceRef = useRef(distance);
+  const targetRef = useRef<[number, number, number]>([0, 0, 0]);
+  const isPanningRef = useRef(false);
+  const lastPanPositionRef = useRef<{ x: number; y: number } | null>(null);
+  
+  // Keep refs in sync
+  useEffect(() => {
+    distanceRef.current = distance;
+  }, [distance]);
+  
+  useEffect(() => {
+    targetRef.current = target;
+  }, [target]);
+
+  // Helper function to update camera position from quaternion, distance, and target
+  const updateCameraPosition = (camera: THREE.PerspectiveCamera, q: Quaternion, dist: number, tgt: [number, number, number]) => {
+    // Start with base direction (looking from positive x, y, z towards origin)
+    const baseDir = new THREE.Vector3(1, 1, 1).normalize();
+    const rotatedDir = rotateVector(baseDir.x, baseDir.y, baseDir.z, q);
+    // Position camera at target + rotated direction * distance
+    const targetVec = new THREE.Vector3(tgt[0], tgt[1], tgt[2]);
+    camera.position.copy(targetVec.clone().add(rotatedDir.clone().multiplyScalar(dist)));
+    camera.lookAt(targetVec);
+  };
 
   // Extract and transform pixel data
   const transformedPixels = useMemo(() => {
@@ -371,159 +469,332 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
     return pixels;
   }, [image, pipeline, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder]);
 
-  // Initialize Three.js scene
+  // Initialize Three.js scene (only once)
   useEffect(() => {
-    if (!containerRef.current || !transformedPixels || transformedPixels.length === 0) return;
+    if (!containerRef.current) return;
 
-    let renderer: THREE.WebGLRenderer | null = null;
-    let geometry: THREE.BufferGeometry | null = null;
-    let material: THREE.PointsMaterial | null = null;
-    let scene: THREE.Scene | null = null;
-    let camera: THREE.PerspectiveCamera | null = null;
+    const container = containerRef.current;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    
+    if (width === 0 || height === 0) return;
 
-    try {
-      const container = containerRef.current;
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      
-      if (width === 0 || height === 0) return;
+    // Scene
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a1a);
+    sceneRef.current = scene;
 
-      // Scene
-      scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x1a1a1a);
-      sceneRef.current = scene;
+    // Camera - position will be set by quaternion rotation
+    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+    updateCameraPosition(camera, rotationQuaternionRef.current, distanceRef.current, targetRef.current);
+    cameraRef.current = camera;
 
-      // Camera
-      camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-      camera.position.set(200, 200, 200);
-      camera.lookAt(0, 0, 0);
-      cameraRef.current = camera;
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+    rendererRef.current = renderer;
 
-      // Renderer
-      renderer = new THREE.WebGLRenderer({ antialias: true });
-      renderer.setSize(width, height);
-      renderer.setPixelRatio(window.devicePixelRatio);
-      container.appendChild(renderer.domElement);
-      rendererRef.current = renderer;
+    // Points geometry (will be populated later)
+    const geometry = new THREE.BufferGeometry();
+    const material = new THREE.PointsMaterial({
+      size: 1,
+      vertexColors: true,
+      sizeAttenuation: false
+    });
 
-      // Points geometry
-      geometry = new THREE.BufferGeometry();
-      const positions = new Float32Array(transformedPixels.length * 3);
-      const colors = new Float32Array(transformedPixels.length * 3);
+    const points = new THREE.Points(geometry, material);
+    scene.add(points);
+    pointsRef.current = points;
 
-      transformedPixels.forEach((pixel, i) => {
-        positions[i * 3] = pixel.position[0];
-        positions[i * 3 + 1] = pixel.position[1];
-        positions[i * 3 + 2] = pixel.position[2];
-        colors[i * 3] = pixel.color[0];
-        colors[i * 3 + 1] = pixel.color[1];
-        colors[i * 3 + 2] = pixel.color[2];
-      });
+    // Animation loop
+    const animate = () => {
+      if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
+      animationFrameRef.current = requestAnimationFrame(animate);
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
+    };
+    animate();
 
-      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    // Handle resize
+    const handleResize = () => {
+      if (!containerRef.current || !cameraRef.current || !rendererRef.current) return;
+      const width = containerRef.current.clientWidth;
+      const height = containerRef.current.clientHeight;
+      cameraRef.current.aspect = width / height;
+      cameraRef.current.updateProjectionMatrix();
+      rendererRef.current.setSize(width, height);
+    };
+    window.addEventListener('resize', handleResize);
 
-      // Points material
-      material = new THREE.PointsMaterial({
-        size: 1,
-        vertexColors: true,
-        sizeAttenuation: false
-      });
+    // Cleanup function
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      window.removeEventListener('resize', handleResize);
+      if (containerRef.current && renderer.domElement.parentNode) {
+        containerRef.current.removeChild(renderer.domElement);
+      }
+      renderer.dispose();
+      geometry.dispose();
+      material.dispose();
+    };
+  }, []); // Only run once on mount
 
-      const points = new THREE.Points(geometry, material);
-      scene.add(points);
-      pointsRef.current = points;
+  // Update camera position when zoom changes (but preserve rotation)
+  useEffect(() => {
+    if (!cameraRef.current || isDraggingRef.current) return;
+    updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, baseDistance * zoom);
+  }, [zoom]);
 
-      // Orbit controls (using a simple implementation)
-      let isDragging = false;
-      let previousMousePosition = { x: 0, y: 0 };
-
-      const onMouseDown = (e: MouseEvent) => {
-        isDragging = true;
-        previousMousePosition = { x: e.clientX, y: e.clientY };
-      };
-
-      const onMouseMove = (e: MouseEvent) => {
-        if (!isDragging || !camera) return;
-        const deltaX = e.clientX - previousMousePosition.x;
-        const deltaY = e.clientY - previousMousePosition.y;
-        camera.position.applyAxisAngle(new THREE.Vector3(0, 1, 0), deltaX * 0.01);
-        const axis = new THREE.Vector3(1, 0, 0);
-        camera.position.applyAxisAngle(axis, deltaY * 0.01);
-        camera.lookAt(0, 0, 0);
-        previousMousePosition = { x: e.clientX, y: e.clientY };
-      };
-
-      const onMouseUp = () => {
-        isDragging = false;
-      };
-
-      const onWheel = (e: WheelEvent) => {
-        e.preventDefault();
-        if (!camera) return;
-        const distance = camera.position.length();
-        const newDistance = distance + e.deltaY * 0.1;
-        if (newDistance > 10 && newDistance < 1000) {
-          camera.position.normalize().multiplyScalar(newDistance);
-        }
-      };
-
-      renderer.domElement.addEventListener('mousedown', onMouseDown);
-      renderer.domElement.addEventListener('mousemove', onMouseMove);
-      renderer.domElement.addEventListener('mouseup', onMouseUp);
-      renderer.domElement.addEventListener('wheel', onWheel);
-
-      // Animation loop
-      const animate = () => {
-        if (!renderer || !scene || !camera) return;
-        animationFrameRef.current = requestAnimationFrame(animate);
-        renderer.render(scene, camera);
-      };
-      animate();
-
-      // Handle resize
-      const handleResize = () => {
-        if (!containerRef.current || !camera || !renderer) return;
-        const width = containerRef.current.clientWidth;
-        const height = containerRef.current.clientHeight;
-        camera.aspect = width / height;
-        camera.updateProjectionMatrix();
-        renderer.setSize(width, height);
-      };
-      window.addEventListener('resize', handleResize);
-
-      // Cleanup function
-      return () => {
-        if (animationFrameRef.current) {
-          cancelAnimationFrame(animationFrameRef.current);
-        }
-        if (renderer) {
-          renderer.domElement.removeEventListener('mousedown', onMouseDown);
-          renderer.domElement.removeEventListener('mousemove', onMouseMove);
-          renderer.domElement.removeEventListener('mouseup', onMouseUp);
-          renderer.domElement.removeEventListener('wheel', onWheel);
-          window.removeEventListener('resize', handleResize);
-          if (containerRef.current && renderer.domElement.parentNode) {
-            containerRef.current.removeChild(renderer.domElement);
-          }
-          renderer.dispose();
-        }
-        if (geometry) geometry.dispose();
-        if (material) material.dispose();
-      };
-    } catch (error) {
-      console.error('Error initializing ColorPointCloud:', error);
-      // Cleanup on error
-      if (renderer) renderer.dispose();
-      if (geometry) geometry.dispose();
-      if (material) material.dispose();
-      return () => {}; // Return empty cleanup function on error
+  // Sync quaternion with yaw/pitch when they change (but not during dragging or zooming)
+  useEffect(() => {
+    if (!isDraggingRef.current && cameraRef.current) {
+      rotationQuaternionRef.current = eulerToQuaternion(yaw, pitch);
+      updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, baseDistance * zoom);
     }
-  }, [transformedPixels]);
+  }, [yaw, pitch]);
 
-  // Update points when pixels change
+  // Arcball: convert screen coordinates to sphere coordinates
+  function screenToSphere(x: number, y: number, rect: DOMRect): [number, number, number] | null {
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const radius = Math.min(rect.width, rect.height) / 2;
+    
+    const dx = (x - centerX) / radius;
+    const dy = (y - centerY) / radius;
+    const d2 = dx * dx + dy * dy;
+    
+    if (d2 > 1) {
+      // Outside sphere, project to edge
+      const d = Math.sqrt(d2);
+      return [dx / d, dy / d, 0];
+    } else {
+      // Inside sphere
+      const dz = Math.sqrt(1 - d2);
+      return [dx, dy, dz];
+    }
+  }
+
+  // Set up arcball controls
   useEffect(() => {
-    if (!pointsRef.current || !transformedPixels || transformedPixels.length === 0) return;
+    if (!rendererRef.current || !image) return;
+    
+    const canvas = rendererRef.current.domElement;
+    if (!canvas) return;
+    
+    const onDown = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      const sphere = screenToSphere(e.clientX, e.clientY, rect);
+      if (sphere) {
+        isDraggingRef.current = true;
+        setIsDragging(true);
+        startSphereRef.current = sphere;
+      }
+    };
+    
+    const onMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current || !startSphereRef.current) return;
+      
+      const rect = canvas.getBoundingClientRect();
+      const currentSphere = screenToSphere(e.clientX, e.clientY, rect);
+      if (!currentSphere) return;
+      
+      // Calculate rotation axis and angle
+      const [sx, sy, sz] = startSphereRef.current;
+      const [cx, cy, cz] = currentSphere;
+      
+      // Cross product gives rotation axis
+      const axis: [number, number, number] = [
+        sy * cz - sz * cy,
+        sz * cx - sx * cz,
+        sx * cy - sy * cx,
+      ];
+      
+      const axisLength = Math.sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
+      if (axisLength < 0.0001) return; // Too small movement
+      
+      // Normalize axis
+      const normalizedAxis: [number, number, number] = [
+        axis[0] / axisLength,
+        axis[1] / axisLength,
+        axis[2] / axisLength,
+      ];
+      
+      // Dot product gives angle
+      const dot = sx * cx + sy * cy + sz * cz;
+      const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 0.8; // Scale for sensitivity
+      
+      // Create rotation quaternion
+      const deltaQ = quaternionFromAxisAngle(normalizedAxis, angle);
+      
+      // Apply rotation
+      rotationQuaternionRef.current = quaternionMultiply(deltaQ, rotationQuaternionRef.current);
+      
+      // Convert back to Euler for state
+      const euler = quaternionToEuler(rotationQuaternionRef.current);
+      setYaw(euler.yaw);
+      setPitch(euler.pitch);
+      
+      // Update camera position
+      if (cameraRef.current) {
+        updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, baseDistance * zoomRef.current);
+      }
+      
+      // Update start position for next frame
+      startSphereRef.current = currentSphere;
+    };
+    
+    const onUp = () => {
+      isDraggingRef.current = false;
+      setIsDragging(false);
+      startSphereRef.current = null;
+    };
+    
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = Math.exp(e.deltaY * 0.0015); // Reversed: positive deltaY zooms in
+      const newZoom = Math.max(0.5, Math.min(3, zoomRef.current * factor));
+      setZoom(newZoom);
+      // Update camera immediately to avoid delay
+      if (cameraRef.current) {
+        updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, baseDistance * newZoom);
+      }
+    };
+    
+    canvas.addEventListener('mousedown', onDown);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    
+    // Touch handlers with pinch-to-zoom support
+    let initialDistance = 0;
+    let initialZoom = zoomRef.current;
+    
+    const onTDown = (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.touches.length === 1) {
+        const t = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const sphere = screenToSphere(t.clientX, t.clientY, rect);
+        if (sphere) {
+          isDraggingRef.current = true;
+          setIsDragging(true);
+          startSphereRef.current = sphere;
+        }
+      } else if (e.touches.length === 2) {
+        // Pinch to zoom
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        initialDistance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        initialZoom = zoomRef.current;
+        isDraggingRef.current = false;
+        setIsDragging(false);
+      }
+    };
+    
+    const onTMove = (e: TouchEvent) => {
+      e.preventDefault();
+      if (e.touches.length === 1 && isDraggingRef.current && startSphereRef.current) {
+        const t = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const currentSphere = screenToSphere(t.clientX, t.clientY, rect);
+        if (!currentSphere) return;
+        
+        const [sx, sy, sz] = startSphereRef.current;
+        const [cx, cy, cz] = currentSphere;
+        
+        const axis: [number, number, number] = [
+          sy * cz - sz * cy,
+          sz * cx - sx * cz,
+          sx * cy - sy * cx,
+        ];
+        
+        const axisLength = Math.sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
+        if (axisLength < 0.0001) return;
+        
+        const normalizedAxis: [number, number, number] = [
+          axis[0] / axisLength,
+          axis[1] / axisLength,
+          axis[2] / axisLength,
+        ];
+        
+        const dot = sx * cx + sy * cy + sz * cz;
+        const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 0.8;
+        
+        const deltaQ = quaternionFromAxisAngle(normalizedAxis, angle);
+        rotationQuaternionRef.current = quaternionMultiply(deltaQ, rotationQuaternionRef.current);
+        
+        const euler = quaternionToEuler(rotationQuaternionRef.current);
+        setYaw(euler.yaw);
+        setPitch(euler.pitch);
+        
+        if (cameraRef.current) {
+          updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, baseDistance * zoomRef.current);
+        }
+        
+        startSphereRef.current = currentSphere;
+      } else if (e.touches.length === 2 && initialDistance > 0) {
+        // Pinch to zoom
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const currentDistance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const scale = currentDistance / initialDistance;
+        const newZoom = Math.max(0.5, Math.min(3, initialZoom * scale));
+        setZoom(newZoom);
+        if (cameraRef.current) {
+          updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, baseDistance * newZoom);
+        }
+      }
+    };
+    
+    const onTUp = (e: TouchEvent) => {
+      if (e.touches.length === 0) {
+        isDraggingRef.current = false;
+        setIsDragging(false);
+        startSphereRef.current = null;
+        initialDistance = 0;
+      } else if (e.touches.length === 1) {
+        // Switch from pinch to rotate
+        const t = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        const sphere = screenToSphere(t.clientX, t.clientY, rect);
+        if (sphere) {
+          isDraggingRef.current = true;
+          setIsDragging(true);
+          startSphereRef.current = sphere;
+        }
+      }
+    };
+    
+    canvas.addEventListener('touchstart', onTDown, { passive: false });
+    window.addEventListener('touchmove', onTMove, { passive: false });
+    window.addEventListener('touchend', onTUp);
+    
+    return () => {
+      canvas.removeEventListener('mousedown', onDown);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('touchstart', onTDown);
+      window.removeEventListener('touchmove', onTMove);
+      window.removeEventListener('touchend', onTUp);
+    };
+  }, [image]);
+
+  // Update points when pixels change (camera stays fixed)
+  useEffect(() => {
+    if (!pointsRef.current || !transformedPixels || transformedPixels.length === 0) {
+      // Clear geometry if no pixels
+      if (pointsRef.current) {
+        const geometry = pointsRef.current.geometry;
+        geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(0), 3));
+        geometry.setDrawRange(0, 0);
+      }
+      return;
+    }
 
     const geometry = pointsRef.current.geometry;
     const positions = new Float32Array(transformedPixels.length * 3);

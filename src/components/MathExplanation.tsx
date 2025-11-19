@@ -817,6 +817,75 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
         </div>
         )}
 
+        {activeTab === 'pointCloud' && (
+        <div className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-foreground">Color Point Cloud</h3>
+            <p className="text-sm text-muted-foreground">3D visualization of all image pixels in RGB color space. Each point is positioned at its (R, G, B) coordinates and colored with its actual pixel color.</p>
+          </div>
+          <Card className="p-4 border-border bg-card">
+            <div className="w-full h-[600px]">
+              <ColorPointCloud
+                image={image || null}
+                pipeline={pipeline}
+                brightness={effBrightness}
+                contrast={effContrast}
+                saturation={effSaturation}
+                hue={effHue}
+                linearSaturation={linearSaturation}
+                vibrance={effVibrance}
+                transformOrder={effectiveOrder}
+              />
+            </div>
+          </Card>
+          
+          <div className="space-y-3 mt-4 p-4 bg-muted/30 rounded-lg border border-border">
+            <div className="space-y-2">
+              <h4 className="text-base font-semibold text-foreground">What is the Color Point Cloud?</h4>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                The Color Point Cloud is a three-dimensional visualization that maps every pixel in your image to a point in RGB color space. Each pixel's red, green, and blue values determine its position along the X, Y, and Z axes respectively, creating a spatial representation of your image's color distribution.
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <h4 className="text-base font-semibold text-foreground">What Does It Mean?</h4>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                The shape and distribution of points reveal the color characteristics of your image. Dense clusters indicate dominant colors, while sparse regions show less common hues. The overall spread tells you about color diversity—tight clusters suggest a limited palette, while a wide distribution indicates rich color variation. The point cloud updates in real-time as you apply transformations, showing how these adjustments impact the spatial distribution of colors in RGB color space.
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <h4 className="text-base font-semibold text-foreground">Why Should You Care?</h4>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Understanding your image's color distribution helps you make more informed editing decisions. You can see if your adjustments are pushing colors into undesirable ranges (like clipping to pure white or black), identify color casts, and visualize how transformations affect the entire color gamut. It's particularly useful for spotting over-saturation, color shifts, and understanding how different filters compress or expand your color space.
+              </p>
+            </div>
+            
+            <div className="space-y-2">
+              <h4 className="text-base font-semibold text-foreground">How to Read It</h4>
+              <ul className="text-sm text-muted-foreground leading-relaxed space-y-1.5 list-disc list-inside">
+                <li><strong>Axes:</strong> The X-axis represents red values, Y-axis represents green, and Z-axis represents blue. The center (0, 0, 0) corresponds to RGB(128, 128, 128)—a neutral gray.</li>
+                <li><strong>Point Colors:</strong> Each point is colored with its actual pixel color, so you can see both position and appearance simultaneously.</li>
+                <li><strong>Density:</strong> Brighter, more opaque regions indicate many pixels share similar colors. Darker, sparse areas show unique or rare colors.</li>
+                <li><strong>Pure Colors:</strong> Points at the extremes of each axis represent pure colors—red (255, 0, 0), green (0, 255, 0), blue (0, 0, 255), white (255, 255, 255), black (0, 0, 0), and the secondary colors.</li>
+                <li><strong>Interaction:</strong> Click and drag to rotate the view, scroll to zoom in and out, and explore the cloud from different angles.</li>
+              </ul>
+            </div>
+            
+            <div className="space-y-2">
+              <h4 className="text-base font-semibold text-foreground">What to Check Out</h4>
+              <ul className="text-sm text-muted-foreground leading-relaxed space-y-1.5 list-disc list-inside">
+                <li><strong>Color Clusters:</strong> Look for tight groupings that represent dominant colors in your image—these might be skin tones, sky, foliage, or other key elements.</li>
+                <li><strong>Transformation Effects:</strong> Adjust brightness, contrast, or saturation and watch how the point cloud shifts, expands, or contracts. Notice how contrast stretches colors away from the center, while saturation moves points toward the edges.</li>
+                <li><strong>Clipping Detection:</strong> Check if points are accumulating at the extremes of the RGB space (near 0 or 255 on any axis)—this indicates color clipping where detail is being lost.</li>
+                <li><strong>Color Balance:</strong> See if the distribution is skewed toward one axis (e.g., more red) which might indicate a color cast.</li>
+                <li><strong>Filter Impact:</strong> Apply blur, sharpen, or edge detection filters and observe how they redistribute colors in the RGB space.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        )}
+
         {/* Convolution-backed layers */}
         {activeTab === 'blur' && pipeline && selectedInstanceId && (
         <div className="space-y-4 mt-4">

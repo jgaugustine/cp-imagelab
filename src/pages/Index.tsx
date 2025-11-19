@@ -238,7 +238,7 @@ export default function Index(_props: IndexProps) {
                     });
                   }
                 }}
-                onCardClick={(transformType) => setActiveTab(transformType)}
+                onCardClick={(transformType) => setActiveTab(transformType as string)}
                 onInstanceSelect={(instanceId) => {
                   _props.setSelectedInstanceId?.(instanceId);
                   // Also set activeTab based on the instance kind
