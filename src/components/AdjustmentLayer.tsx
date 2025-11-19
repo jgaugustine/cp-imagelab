@@ -177,21 +177,6 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        {props.image && (
-          <Button
-            variant="outline"
-            className="gap-2"
-            onClick={() => {
-              // Set activeTab to 'pointCloud' by calling onCardClick with a string
-              if (props.onCardClick) {
-                // We need to extend the type, but for now cast it
-                (props.onCardClick as any)('pointCloud');
-              }
-            }}
-          >
-            Color Point Cloud
-          </Button>
-        )}
         <div className="flex-1" />
       </div>
 

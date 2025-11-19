@@ -1,4 +1,5 @@
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import RGBCubeVisualizer from "@/components/RGBCubeVisualizer";
 import { FilterInstance, TransformationType, BlurParams, SharpenParams, EdgeParams, DenoiseParams, CustomConvParams } from "@/types/transformations";
 import { KernelPreview } from "@/components/Convolution/KernelGrid";
@@ -36,11 +37,15 @@ interface MathExplanationProps {
   convAnalysis?: any | null;
   // Original image for convolution visualization
   image?: HTMLImageElement | null;
+  // Callback to change active tab
+  onActiveTabChange?: (tab: string) => void;
 }
 
-export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, pipeline, selectedInstanceId, hasImage, activeTab, onUpdateInstanceParams, convAnalysis, image }: MathExplanationProps) {
+export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, pipeline, selectedInstanceId, hasImage, activeTab, onUpdateInstanceParams, convAnalysis, image, onActiveTabChange }: MathExplanationProps) {
   const [localLastChange, setLocalLastChange] = useState<'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | undefined>(undefined);
   const prevRef = useRef({ brightness, contrast, saturation, vibrance, hue });
+  // Track selected color space from ColorPointCloud
+  const [selectedColorSpace, setSelectedColorSpace] = useState<'rgb' | 'hsv' | 'hsl' | 'lab' | 'ycbcr'>('rgb');
   // Track input values for custom convolution kernel editing (keyed by instance ID and cell position)
   const [customConvInputValues, setCustomConvInputValues] = useState<Record<string, string>>({});
   // Region selection state for convolution visualization
@@ -287,8 +292,24 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
   return (
     <Card className="p-6 border-border bg-card h-fit">
       <div className="w-full">
-        <div className="mb-4">
+        <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-primary">Mathematical Transformations</h2>
+          {image && onActiveTabChange && (
+            <Button
+              variant={activeTab === 'pointCloud' ? "default" : "outline"}
+              className="gap-2"
+              onClick={() => {
+                if (activeTab === 'pointCloud') {
+                  onActiveTabChange('brightness');
+                } else {
+                  onActiveTabChange('pointCloud');
+                }
+              }}
+              aria-pressed={activeTab === 'pointCloud'}
+            >
+              Color Point Cloud
+            </Button>
+          )}
         </div>
 
         {/* Persistently mounted RGB cubes for single-tool tabs; visibility toggled by activeTab */}
@@ -821,10 +842,10 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
         <div className="space-y-4 mt-4">
           <div className="space-y-2">
             <h3 className="text-lg font-semibold text-foreground">Color Point Cloud</h3>
-            <p className="text-sm text-muted-foreground">3D visualization of all image pixels in RGB color space. Each point is positioned at its (R, G, B) coordinates and colored with its actual pixel color.</p>
+            <p className="text-sm text-muted-foreground">3D visualization of all image pixels in multiple color spaces (RGB, HSV, HSL, Lab, YCbCr). Each point is positioned at its color space coordinates and colored with its actual pixel color. Use the color space selector to switch between different representations.</p>
           </div>
           <Card className="p-4 border-border bg-card">
-            <div className="w-full h-[600px]">
+            <div className="w-full h-[600px] flex flex-col">
               <ColorPointCloud
                 image={image || null}
                 pipeline={pipeline}
@@ -835,52 +856,446 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
                 linearSaturation={linearSaturation}
                 vibrance={effVibrance}
                 transformOrder={effectiveOrder}
+                onColorSpaceChange={setSelectedColorSpace}
               />
             </div>
           </Card>
           
-          <div className="space-y-3 mt-4 p-4 bg-muted/30 rounded-lg border border-border">
-            <div className="space-y-2">
-              <h4 className="text-base font-semibold text-foreground">What is the Color Point Cloud?</h4>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                The Color Point Cloud is a three-dimensional visualization that maps every pixel in your image to a point in RGB color space. Each pixel's red, green, and blue values determine its position along the X, Y, and Z axes respectively, creating a spatial representation of your image's color distribution.
-              </p>
-            </div>
-            
-            <div className="space-y-2">
-              <h4 className="text-base font-semibold text-foreground">What Does It Mean?</h4>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                The shape and distribution of points reveal the color characteristics of your image. Dense clusters indicate dominant colors, while sparse regions show less common hues. The overall spread tells you about color diversity—tight clusters suggest a limited palette, while a wide distribution indicates rich color variation. The point cloud updates in real-time as you apply transformations, showing how these adjustments impact the spatial distribution of colors in RGB color space.
-              </p>
-            </div>
-            
-            <div className="space-y-2">
-              <h4 className="text-base font-semibold text-foreground">Why Should You Care?</h4>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Understanding your image's color distribution helps you make more informed editing decisions. You can see if your adjustments are pushing colors into undesirable ranges (like clipping to pure white or black), identify color casts, and visualize how transformations affect the entire color gamut. It's particularly useful for spotting over-saturation, color shifts, and understanding how different filters compress or expand your color space.
-              </p>
-            </div>
-            
-            <div className="space-y-2">
-              <h4 className="text-base font-semibold text-foreground">How to Read It</h4>
-              <ul className="text-sm text-muted-foreground leading-relaxed space-y-1.5 list-disc list-inside">
-                <li><strong>Axes:</strong> The X-axis represents red values, Y-axis represents green, and Z-axis represents blue. The center (0, 0, 0) corresponds to RGB(128, 128, 128)—a neutral gray.</li>
-                <li><strong>Point Colors:</strong> Each point is colored with its actual pixel color, so you can see both position and appearance simultaneously.</li>
-                <li><strong>Density:</strong> Brighter, more opaque regions indicate many pixels share similar colors. Darker, sparse areas show unique or rare colors.</li>
-                <li><strong>Pure Colors:</strong> Points at the extremes of each axis represent pure colors—red (255, 0, 0), green (0, 255, 0), blue (0, 0, 255), white (255, 255, 255), black (0, 0, 0), and the secondary colors.</li>
-                <li><strong>Interaction:</strong> Click and drag to rotate the view, scroll to zoom in and out, and explore the cloud from different angles.</li>
-              </ul>
-            </div>
-            
-            <div className="space-y-2">
-              <h4 className="text-base font-semibold text-foreground">What to Check Out</h4>
-              <ul className="text-sm text-muted-foreground leading-relaxed space-y-1.5 list-disc list-inside">
-                <li><strong>Color Clusters:</strong> Look for tight groupings that represent dominant colors in your image—these might be skin tones, sky, foliage, or other key elements.</li>
-                <li><strong>Transformation Effects:</strong> Adjust brightness, contrast, or saturation and watch how the point cloud shifts, expands, or contracts. Notice how contrast stretches colors away from the center, while saturation moves points toward the edges.</li>
-                <li><strong>Clipping Detection:</strong> Check if points are accumulating at the extremes of the RGB space (near 0 or 255 on any axis)—this indicates color clipping where detail is being lost.</li>
-                <li><strong>Color Balance:</strong> See if the distribution is skewed toward one axis (e.g., more red) which might indicate a color cast.</li>
-                <li><strong>Filter Impact:</strong> Apply blur, sharpen, or edge detection filters and observe how they redistribute colors in the RGB space.</li>
-              </ul>
+          <div className="space-y-4 mt-4">
+            {/* RGB Color Space */}
+            {selectedColorSpace === 'rgb' && (
+            <Card className="p-4 border-border bg-card">
+              <h4 className="text-base font-semibold text-foreground mb-3">RGB Color Space</h4>
+              <div className="space-y-3 text-sm">
+                <div className="bg-muted p-3 rounded-lg">
+                  <div className="text-foreground font-semibold mb-2">Definition</div>
+                  <div className="text-muted-foreground text-xs leading-relaxed">
+                    RGB (Red, Green, Blue) is an additive color model where colors are represented as combinations of three primary channels. Each channel value ranges from 0 to 255 (8-bit) or 0.0 to 1.0 (normalized).
+                  </div>
+                </div>
+                
+                <div className="bg-muted p-3 rounded-lg font-mono text-xs">
+                  <div className="text-foreground font-semibold mb-2">Axes in Visualization</div>
+                  <div className="text-muted-foreground">
+                    <div>X-axis: R ∈ [-128, 127] (Red channel, centered at origin)</div>
+                    <div>Y-axis: G ∈ [-128, 127] (Green channel, centered at origin)</div>
+                    <div>Z-axis: B ∈ [-128, 127] (Blue channel, centered at origin)</div>
+                    <div className="mt-2 text-xs">Position: [R - 128, G - 128, B - 128]</div>
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg text-xs">
+                  <div className="text-foreground font-semibold mb-2">Geometric Interpretation</div>
+                  <div className="text-muted-foreground leading-relaxed">
+                    RGB forms a cube in 3D space where each corner represents a pure color: (255,0,0) = red, (0,255,0) = green, (0,0,255) = blue, (255,255,255) = white, (0,0,0) = black. The diagonal from black to white (R=G=B) represents grayscale values. The visualization centers this cube at the origin by subtracting 128 from each channel, making it easier to see relationships around the midpoint.
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg text-xs">
+                  <div className="text-foreground font-semibold mb-2">Advantages</div>
+                  <ul className="text-muted-foreground list-disc list-inside space-y-1">
+                    <li>Direct representation of pixel values—no conversion needed</li>
+                    <li>Intuitive for understanding raw color channel relationships</li>
+                    <li>Shows clipping and channel imbalances clearly</li>
+                    <li>Useful for debugging color transformations</li>
+                  </ul>
+                </div>
+              </div>
+            </Card>
+            )}
+
+            {/* HSV Color Space */}
+            {selectedColorSpace === 'hsv' && (
+            <Card className="p-4 border-border bg-card">
+              <h4 className="text-base font-semibold text-foreground mb-3">HSV Color Space (Hue, Saturation, Value)</h4>
+              <div className="space-y-3 text-sm">
+                <div className="bg-muted p-3 rounded-lg">
+                  <div className="text-foreground font-semibold mb-2">Definition</div>
+                  <div className="text-muted-foreground text-xs leading-relaxed">
+                    HSV separates color into perceptual attributes: Hue (what color), Saturation (how vivid), and Value (how bright). It's derived from the RGB color space and resembles how humans perceive color.
+                  </div>
+                </div>
+                
+                <div className="bg-muted p-3 rounded-lg font-mono text-xs">
+                  <div className="text-foreground font-semibold mb-2">Conversion from RGB</div>
+                  <div className="text-muted-foreground space-y-2">
+                    <div>Given: r, g, b ∈ [0, 255] normalized to [0, 1]</div>
+                    <div className="mt-2">
+                      <div>max = max(r, g, b)</div>
+                      <div>min = min(r, g, b)</div>
+                      <div>δ = max - min</div>
+                    </div>
+                    <div className="mt-2">
+                      <div><strong>Hue (H):</strong></div>
+                      <div className="pl-2">
+                        H = 60° × h'<br/>
+                        where h' = {`{`}
+                        <div className="pl-4">
+                          ((g - b) / δ) mod 6  if max = r<br/>
+                          (b - r) / δ + 2      if max = g<br/>
+                          (r - g) / δ + 4      if max = b<br/>
+                          0                    if δ = 0
+                        </div>
+                        {`}`}
+                      </div>
+                      <div className="mt-1">H ∈ [0°, 360°)</div>
+                    </div>
+                    <div className="mt-2">
+                      <div><strong>Saturation (S):</strong></div>
+                      <div>S = (max = 0) ? 0 : δ / max</div>
+                      <div>S ∈ [0, 1]</div>
+                    </div>
+                    <div className="mt-2">
+                      <div><strong>Value (V):</strong></div>
+                      <div>V = max</div>
+                      <div>V ∈ [0, 1]</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg font-mono text-xs">
+                  <div className="text-foreground font-semibold mb-2">Axes in Visualization</div>
+                  <div className="text-muted-foreground">
+                    <div>X-axis: H ∈ [-180, 180] (Hue: H × 2 - 180, centered at origin)</div>
+                    <div>Y-axis: S ∈ [-128, 127] (Saturation: S × 255 - 128)</div>
+                    <div>Z-axis: V ∈ [-128, 127] (Value: V × 255 - 128)</div>
+                    <div className="mt-2 text-xs">Position: [H × 2 - 180, S × 255 - 128, V × 255 - 128]</div>
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg text-xs">
+                  <div className="text-foreground font-semibold mb-2">Geometric Interpretation</div>
+                  <div className="text-muted-foreground leading-relaxed">
+                    HSV forms a cylindrical or conical shape: Hue wraps around a circle (0° = red, 120° = green, 240° = blue), Saturation is the radius (0 = gray axis, 1 = pure color at edge), and Value is the height (0 = black, 1 = brightest). In this visualization, the hue axis is linearized from [0°, 360°) to [-180, 180] for easier 3D viewing. Points near the Z-axis (low saturation) are near-gray; points far from the Z-axis are vivid colors.
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg text-xs">
+                  <div className="text-foreground font-semibold mb-2">Advantages</div>
+                  <ul className="text-muted-foreground list-disc list-inside space-y-1">
+                    <li>Separates color (H) from brightness (V) and intensity (S)</li>
+                    <li>Intuitive for artists: adjust hue without changing brightness</li>
+                    <li>Shows color relationships clearly—similar hues cluster together</li>
+                    <li>Useful for color correction and color grading</li>
+                  </ul>
+                </div>
+              </div>
+            </Card>
+            )}
+
+            {/* HSL Color Space */}
+            {selectedColorSpace === 'hsl' && (
+            <Card className="p-4 border-border bg-card">
+              <h4 className="text-base font-semibold text-foreground mb-3">HSL Color Space (Hue, Saturation, Lightness)</h4>
+              <div className="space-y-3 text-sm">
+                <div className="bg-muted p-3 rounded-lg">
+                  <div className="text-foreground font-semibold mb-2">Definition</div>
+                  <div className="text-muted-foreground text-xs leading-relaxed">
+                    HSL is similar to HSV but uses Lightness instead of Value. Lightness represents the perceived brightness, where L=0.5 represents the pure color at maximum chroma, unlike Value where V=1 is always the brightest.
+                  </div>
+                </div>
+                
+                <div className="bg-muted p-3 rounded-lg font-mono text-xs">
+                  <div className="text-foreground font-semibold mb-2">Conversion from RGB</div>
+                  <div className="text-muted-foreground space-y-2">
+                    <div>Given: r, g, b ∈ [0, 255] normalized to [0, 1]</div>
+                    <div className="mt-2">
+                      <div>max = max(r, g, b)</div>
+                      <div>min = min(r, g, b)</div>
+                      <div>δ = max - min</div>
+                      <div>L = (max + min) / 2</div>
+                    </div>
+                    <div className="mt-2">
+                      <div><strong>Hue (H):</strong> Same as HSV</div>
+                      <div>H ∈ [0°, 360°)</div>
+                    </div>
+                    <div className="mt-2">
+                      <div><strong>Saturation (S):</strong></div>
+                      <div>S = (δ = 0) ? 0 : δ / (1 - |2L - 1|)</div>
+                      <div>S ∈ [0, 1]</div>
+                      <div className="text-xs mt-1">Note: Saturation formula differs from HSV—uses lightness in denominator</div>
+                    </div>
+                    <div className="mt-2">
+                      <div><strong>Lightness (L):</strong></div>
+                      <div>L = (max + min) / 2</div>
+                      <div>L ∈ [0, 1]</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg font-mono text-xs">
+                  <div className="text-foreground font-semibold mb-2">Axes in Visualization</div>
+                  <div className="text-muted-foreground">
+                    <div>X-axis: H ∈ [-180, 180] (Hue: H × 2 - 180, centered at origin)</div>
+                    <div>Y-axis: S ∈ [-128, 127] (Saturation: S × 255 - 128)</div>
+                    <div>Z-axis: L ∈ [-128, 127] (Lightness: L × 255 - 128)</div>
+                    <div className="mt-2 text-xs">Position: [H × 2 - 180, S × 255 - 128, L × 255 - 128]</div>
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg text-xs">
+                  <div className="text-foreground font-semibold mb-2">Geometric Interpretation</div>
+                  <div className="text-muted-foreground leading-relaxed">
+                    HSL forms a double cone: the top cone goes from pure colors (L=0.5, S=1) to white (L=1, S=0), and the bottom cone goes from pure colors to black (L=0, S=0). Unlike HSV, where V=1 can be any saturation, HSL's purest colors (maximum saturation) occur at L=0.5. This makes HSL more intuitive for some applications: increasing lightness always moves toward white, and decreasing lightness always moves toward black.
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg text-xs">
+                  <div className="text-foreground font-semibold mb-2">Advantages</div>
+                  <ul className="text-muted-foreground list-disc list-inside space-y-1">
+                    <li>Lightness is more perceptually uniform than Value</li>
+                    <li>Pure colors (maximum chroma) occur at mid-lightness (L=0.5)</li>
+                    <li>Better for UI design—easier to generate color schemes</li>
+                    <li>Similar hue clustering to HSV but with different brightness distribution</li>
+                  </ul>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg text-xs">
+                  <div className="text-foreground font-semibold mb-2">HSV vs HSL Key Difference</div>
+                  <div className="text-muted-foreground leading-relaxed">
+                    In HSV, V=1 represents the brightest the color can be at any saturation. In HSL, L=0.5 represents the lightness at which colors reach maximum saturation. HSV's brightness scale goes from dark to brightest possible; HSL's lightness scale goes from black through pure color to white.
+                  </div>
+                </div>
+              </div>
+            </Card>
+            )}
+
+            {/* Lab Color Space */}
+            {selectedColorSpace === 'lab' && (
+            <Card className="p-4 border-border bg-card">
+              <h4 className="text-base font-semibold text-foreground mb-3">CIE Lab Color Space (L*a*b*)</h4>
+              <div className="space-y-3 text-sm">
+                <div className="bg-muted p-3 rounded-lg">
+                  <div className="text-foreground font-semibold mb-2">Definition</div>
+                  <div className="text-muted-foreground text-xs leading-relaxed">
+                    CIE Lab is a perceptually uniform color space designed to match human vision. Equal distances in Lab space correspond to approximately equal perceived color differences. It's device-independent and based on the CIE XYZ color space (standard observer, D65 illuminant).
+                  </div>
+                </div>
+                
+                <div className="bg-muted p-3 rounded-lg font-mono text-xs">
+                  <div className="text-foreground font-semibold mb-2">Conversion from RGB (via XYZ)</div>
+                  <div className="text-muted-foreground space-y-2">
+                    <div><strong>Step 1: sRGB to Linear RGB</strong></div>
+                    <div className="pl-2">
+                      For each channel c ∈ {`{r, g, b}`}:<br/>
+                      c_linear = {`{`}
+                      <div className="pl-4">
+                        c/12.92           if c ≤ 0.04045<br/>
+                        ((c + 0.055)/1.055)^2.4  if c &gt; 0.04045
+                      </div>
+                      {`}`}
+                    </div>
+                    <div className="mt-2"><strong>Step 2: Linear RGB to XYZ (D65 illuminant)</strong></div>
+                    <div className="pl-2">
+                      <div>[X]   [0.4124564  0.3575761  0.1804375] [r_linear]</div>
+                      <div>[Y] = [0.2126729  0.7151522  0.0721750] [g_linear]</div>
+                      <div>[Z]   [0.0193339  0.1191920  0.9503041] [b_linear]</div>
+                    </div>
+                    <div className="mt-2"><strong>Step 3: XYZ to Lab (D65 reference white)</strong></div>
+                    <div className="pl-2">
+                      <div>X_n = 0.95047, Y_n = 1.0, Z_n = 1.08883 (D65 white point)</div>
+                      <div className="mt-1">
+                        f(t) = {`{`}
+                        <div className="pl-4">
+                          t^(1/3)              if t &gt; (6/29)³ ≈ 0.008856<br/>
+                          7.787t + 16/116      otherwise
+                        </div>
+                        {`}`}
+                      </div>
+                      <div className="mt-1">
+                        f_x = f(X/X_n)<br/>
+                        f_y = f(Y/Y_n)<br/>
+                        f_z = f(Z/Z_n)
+                      </div>
+                      <div className="mt-1">
+                        <div>L* = 116 × f_y - 16</div>
+                        <div>a* = 500 × (f_x - f_y)</div>
+                        <div>b* = 200 × (f_y - f_z)</div>
+                      </div>
+                      <div className="mt-1">
+                        L* ∈ [0, 100] (perceptual lightness)<br/>
+                        a* ∈ [-128, 127] (green-red axis: negative=green, positive=red)<br/>
+                        b* ∈ [-128, 127] (blue-yellow axis: negative=blue, positive=yellow)
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg font-mono text-xs">
+                  <div className="text-foreground font-semibold mb-2">Axes in Visualization</div>
+                  <div className="text-muted-foreground">
+                    <div>X-axis: a* ∈ [-200, 200] (clamped, green-red chrominance)</div>
+                    <div>Y-axis: L* ∈ [-128, 127] (lightness: L* × 2.55 - 128)</div>
+                    <div>Z-axis: b* ∈ [-200, 200] (clamped, blue-yellow chrominance)</div>
+                    <div className="mt-2 text-xs">Position: [a*, L* × 2.55 - 128, b*] (clamped to reasonable range)</div>
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg text-xs">
+                  <div className="text-foreground font-semibold mb-2">Geometric Interpretation</div>
+                  <div className="text-muted-foreground leading-relaxed">
+                    Lab space is designed to be perceptually uniform: a distance of 1 unit anywhere in the space represents roughly the same perceived color difference. The L* axis (lightness) is vertical, ranging from 0 (black) to 100 (white). The a* axis represents green-red: negative values are green, positive are red. The b* axis represents blue-yellow: negative values are blue, positive are yellow. Colors with a*=0, b*=0 are neutral (grayscale). The chroma (saturation) is distance from the L* axis: C* = √(a*² + b*²). The hue angle is θ = arctan2(b*, a*).
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg text-xs">
+                  <div className="text-foreground font-semibold mb-2">Advantages</div>
+                  <ul className="text-muted-foreground list-disc list-inside space-y-1">
+                    <li><strong>Perceptually uniform:</strong> Equal distances ≈ equal perceived differences</li>
+                    <li><strong>Device-independent:</strong> Based on human visual perception, not display technology</li>
+                    <li><strong>Separates lightness from color:</strong> L* independent of a* and b*</li>
+                    <li><strong>Useful for color matching:</strong> Delta-E calculations for color difference</li>
+                    <li><strong>Better for color correction:</strong> Adjustments are more predictable</li>
+                  </ul>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg text-xs">
+                  <div className="text-foreground font-semibold mb-2">Key Concepts</div>
+                  <div className="text-muted-foreground space-y-1 leading-relaxed">
+                    <div><strong>Lightness (L*):</strong> Perceptual brightness, independent of color</div>
+                    <div><strong>Chroma (C*):</strong> Colorfulness, distance from gray axis: C* = √(a*² + b*²)</div>
+                    <div><strong>Hue (h*):</strong> Color angle: h* = arctan2(b*, a*) in degrees</div>
+                    <div><strong>Delta-E:</strong> Color difference metric: ΔE = √((ΔL*)² + (Δa*)² + (Δb*)²)</div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+            )}
+
+            {/* YCbCr Color Space */}
+            {selectedColorSpace === 'ycbcr' && (
+            <Card className="p-4 border-border bg-card">
+              <h4 className="text-base font-semibold text-foreground mb-3">YCbCr Color Space (Luminance and Chrominance)</h4>
+              <div className="space-y-3 text-sm">
+                <div className="bg-muted p-3 rounded-lg">
+                  <div className="text-foreground font-semibold mb-2">Definition</div>
+                  <div className="text-muted-foreground text-xs leading-relaxed">
+                    YCbCr separates an image into luminance (Y, brightness information) and chrominance (Cb, Cr, color information). It's widely used in video compression (MPEG, H.264) and image compression (JPEG) because the human eye is more sensitive to brightness changes than color changes, allowing aggressive chroma subsampling without visible quality loss.
+                  </div>
+                </div>
+                
+                <div className="bg-muted p-3 rounded-lg font-mono text-xs">
+                  <div className="text-foreground font-semibold mb-2">Conversion from RGB (ITU-R BT.601 standard)</div>
+                  <div className="text-muted-foreground space-y-2">
+                    <div>Given: R, G, B ∈ [0, 255]</div>
+                    <div className="mt-2">
+                      <div><strong>Luminance (Y):</strong></div>
+                      <div>Y = 0.299 × R + 0.587 × G + 0.114 × B</div>
+                      <div>Y ∈ [0, 255]</div>
+                      <div className="text-xs mt-1">Weighted sum matching human luminance perception (more green weight)</div>
+                    </div>
+                    <div className="mt-2">
+                      <div><strong>Blue-difference chroma (Cb):</strong></div>
+                      <div>Cb = -0.168736 × R - 0.331264 × G + 0.5 × B + 128</div>
+                      <div>Cb ∈ [0, 255], centered at 128</div>
+                      <div className="text-xs mt-1">Represents deviation from gray toward blue (positive) or yellow (negative)</div>
+                    </div>
+                    <div className="mt-2">
+                      <div><strong>Red-difference chroma (Cr):</strong></div>
+                      <div>Cr = 0.5 × R - 0.418688 × G - 0.081312 × B + 128</div>
+                      <div>Cr ∈ [0, 255], centered at 128</div>
+                      <div className="text-xs mt-1">Represents deviation from gray toward red (positive) or cyan (negative)</div>
+                    </div>
+                    <div className="mt-2">
+                      <div className="font-semibold">For visualization (centered at origin):</div>
+                      <div>Cb_vis = Cb - 128 ∈ [-128, 127]</div>
+                      <div>Cr_vis = Cr - 128 ∈ [-128, 127]</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg font-mono text-xs">
+                  <div className="text-foreground font-semibold mb-2">Matrix Form</div>
+                  <div className="text-muted-foreground">
+                    <div>[Y ]   [ 0.299   0.587   0.114 ] [R]   [  0 ]</div>
+                    <div>[Cb] = [-0.169  -0.331   0.5   ] [G] + [128]</div>
+                    <div>[Cr]   [ 0.5    -0.419  -0.081 ] [B]   [128]</div>
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg font-mono text-xs">
+                  <div className="text-foreground font-semibold mb-2">Axes in Visualization</div>
+                  <div className="text-muted-foreground">
+                    <div>X-axis: Y ∈ [-128, 127] (Luminance: Y - 128, centered at origin)</div>
+                    <div>Y-axis: Cb ∈ [-128, 127] (Blue-difference chrominance: Cb - 128)</div>
+                    <div>Z-axis: Cr ∈ [-128, 127] (Red-difference chrominance: Cr - 128)</div>
+                    <div className="mt-2 text-xs">Position: [Y - 128, Cb - 128, Cr - 128]</div>
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg text-xs">
+                  <div className="text-foreground font-semibold mb-2">Geometric Interpretation</div>
+                  <div className="text-muted-foreground leading-relaxed">
+                    YCbCr space separates brightness from color information. The Y axis (luminance) represents grayscale intensity, matching how humans perceive brightness. The Cb axis (blue-yellow) and Cr axis (red-cyan) represent chrominance deviations. When Cb=0 and Cr=0 (at the origin after centering), the color is neutral gray. Moving along Cb: positive = more blue, negative = more yellow. Moving along Cr: positive = more red, negative = more cyan. This separation allows video/image codecs to compress chrominance more aggressively (e.g., 4:2:0 subsampling) since human vision prioritizes luminance detail.
+                  </div>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg text-xs">
+                  <div className="text-foreground font-semibold mb-2">Advantages</div>
+                  <ul className="text-muted-foreground list-disc list-inside space-y-1">
+                    <li><strong>Compression-friendly:</strong> Enables chroma subsampling (4:2:0, 4:2:2) with minimal visual loss</li>
+                    <li><strong>Matches human perception:</strong> Y channel matches perceived brightness closely</li>
+                    <li><strong>Separates concerns:</strong> Can adjust brightness (Y) without affecting color (Cb, Cr)</li>
+                    <li><strong>Industry standard:</strong> Used in JPEG, MPEG, H.264, H.265 codecs</li>
+                    <li><strong>Useful for video processing:</strong> Noise reduction, color correction</li>
+                  </ul>
+                </div>
+
+                <div className="bg-muted p-3 rounded-lg text-xs">
+                  <div className="text-foreground font-semibold mb-2">Chroma Subsampling</div>
+                  <div className="text-muted-foreground leading-relaxed">
+                    Because chrominance changes are less perceptually important than luminance, video/image codecs often store Cb and Cr at lower resolutions. Common schemes: 4:4:4 (full chroma), 4:2:2 (half horizontal chroma), 4:2:0 (quarter chroma, half horizontal and vertical). This can reduce file sizes by 50% with minimal visible quality loss.
+                  </div>
+                </div>
+              </div>
+            </Card>
+            )}
+
+            {/* General Information */}
+            <div className="space-y-3 mt-4 p-4 bg-muted/30 rounded-lg border border-border">
+              <div className="space-y-2">
+                <h4 className="text-base font-semibold text-foreground">What is the Color Point Cloud?</h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  The Color Point Cloud is a three-dimensional visualization that maps every pixel in your image to a point in color space. You can visualize your image in multiple color spaces: RGB (red, green, blue), HSV (hue, saturation, value), HSL (hue, saturation, lightness), Lab (perceptually uniform), and YCbCr (luminance and chrominance). Each pixel's color space values determine its position along the X, Y, and Z axes respectively, creating a spatial representation of your image's color distribution.
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <h4 className="text-base font-semibold text-foreground">What Does It Mean?</h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  The shape and distribution of points reveal the color characteristics of your image. Dense clusters indicate dominant colors, while sparse regions show less common hues. The overall spread tells you about color diversity—tight clusters suggest a limited palette, while a wide distribution indicates rich color variation. The point cloud updates in real-time as you apply transformations, showing how these adjustments impact the spatial distribution of colors. Different color spaces reveal different aspects: RGB shows raw channel values, HSV/HSL emphasize hue relationships, Lab provides perceptually uniform spacing, and YCbCr separates luminance from chrominance.
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <h4 className="text-base font-semibold text-foreground">Why Should You Care?</h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Understanding your image's color distribution helps you make more informed editing decisions. You can see if your adjustments are pushing colors into undesirable ranges (like clipping to pure white or black), identify color casts, and visualize how transformations affect the entire color gamut. It's particularly useful for spotting over-saturation, color shifts, and understanding how different filters compress or expand your color space.
+                </p>
+              </div>
+              
+              <div className="space-y-2">
+                <h4 className="text-base font-semibold text-foreground">How to Read It</h4>
+                <ul className="text-sm text-muted-foreground leading-relaxed space-y-1.5 list-disc list-inside">
+                  <li><strong>Color Space Selection:</strong> Use the dropdown above the visualization to switch between RGB, HSV, HSL, Lab, and YCbCr color spaces. Each space maps its three channels to the X, Y, and Z axes.</li>
+                  <li><strong>Axes:</strong> The axes represent the three channels of the selected color space. For RGB: X=Red, Y=Green, Z=Blue. For HSV/HSL: X=Hue, Y=Saturation, Z=Value/Lightness. For Lab: X=a*, Y=L*, Z=b*. For YCbCr: X=Y, Y=Cb, Z=Cr.</li>
+                  <li><strong>Point Colors:</strong> Each point is colored with its actual RGB pixel color, so you can see both position and appearance simultaneously, regardless of the selected visualization space.</li>
+                  <li><strong>Density:</strong> Brighter, more opaque regions indicate many pixels share similar colors. Darker, sparse areas show unique or rare colors.</li>
+                  <li><strong>Pure Colors:</strong> Points at the extremes of each axis represent pure colors—red (255, 0, 0), green (0, 255, 0), blue (0, 0, 255), white (255, 255, 255), black (0, 0, 0), and the secondary colors.</li>
+                  <li><strong>Interaction:</strong> Click and drag to rotate the view, scroll to zoom in and out, and explore the cloud from different angles.</li>
+                </ul>
+              </div>
+              
+              <div className="space-y-2">
+                <h4 className="text-base font-semibold text-foreground">What to Check Out</h4>
+                <ul className="text-sm text-muted-foreground leading-relaxed space-y-1.5 list-disc list-inside">
+                  <li><strong>Color Clusters:</strong> Look for tight groupings that represent dominant colors in your image—these might be skin tones, sky, foliage, or other key elements.</li>
+                  <li><strong>Transformation Effects:</strong> Adjust brightness, contrast, or saturation and watch how the point cloud shifts, expands, or contracts. Notice how contrast stretches colors away from the center, while saturation moves points toward the edges.</li>
+                  <li><strong>Clipping Detection:</strong> Check if points are accumulating at the extremes of the RGB space (near 0 or 255 on any axis)—this indicates color clipping where detail is being lost.</li>
+                  <li><strong>Color Balance:</strong> See if the distribution is skewed toward one axis (e.g., more red) which might indicate a color cast.</li>
+                  <li><strong>Filter Impact:</strong> Apply blur, sharpen, or edge detection filters and observe how they redistribute colors in the RGB space.</li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>

@@ -3,6 +3,9 @@ import * as THREE from 'three';
 import { TransformationType, RGB, FilterInstance, BlurParams, SharpenParams, EdgeParams, DenoiseParams, CustomConvParams } from '@/types/transformations';
 import { cpuConvolutionBackend } from '@/lib/convolutionBackend';
 import { gaussianKernel, boxKernel, sobelKernels, prewittKernels, unsharpKernel } from '@/lib/convolution';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 
 // Quaternion-based rotation for smoother, gimbal-lock-free rotation
 type Quaternion = [number, number, number, number]; // [w, x, y, z]
@@ -68,6 +71,100 @@ function rotateVector(x: number, y: number, z: number, q: Quaternion): THREE.Vec
   );
 }
 
+// Helper function to create text sprite
+function createTextSprite(text: string, color: string = '#ffffff'): THREE.Sprite {
+  const canvas = document.createElement('canvas');
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Could not get canvas context');
+  
+  canvas.width = 256;
+  canvas.height = 256;
+  
+  context.fillStyle = 'rgba(0, 0, 0, 0)';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  
+  context.font = 'Bold 64px Arial';
+  context.fillStyle = color;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.fillText(text, canvas.width / 2, canvas.height / 2);
+  
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  
+  const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+  const sprite = new THREE.Sprite(spriteMaterial);
+  sprite.scale.set(20, 20, 1);
+  
+  return sprite;
+}
+
+// Helper function to create labeled axes
+function createLabeledAxes(
+  center: [number, number, number], 
+  axisLength: number = 50,
+  labels: { x: string; y: string; z: string } = { x: 'X', y: 'Y', z: 'Z' }
+): THREE.Group {
+  const group = new THREE.Group();
+  
+  const xLabel = labels.x;
+  const yLabel = labels.y;
+  const zLabel = labels.z;
+  
+  // X-axis (red) - ArrowHelper includes both line and arrowhead
+  const xArrow = new THREE.ArrowHelper(
+    new THREE.Vector3(1, 0, 0),
+    new THREE.Vector3(0, 0, 0),
+    axisLength,
+    0xff0000,
+    axisLength * 0.2,
+    axisLength * 0.1
+  );
+  group.add(xArrow);
+  
+  // X-axis label
+  const xSprite = createTextSprite(xLabel, '#ff0000');
+  xSprite.position.set(axisLength * 1.2, 0, 0);
+  group.add(xSprite);
+  
+  // Y-axis (green) - ArrowHelper includes both line and arrowhead
+  const yArrow = new THREE.ArrowHelper(
+    new THREE.Vector3(0, 1, 0),
+    new THREE.Vector3(0, 0, 0),
+    axisLength,
+    0x00ff00,
+    axisLength * 0.2,
+    axisLength * 0.1
+  );
+  group.add(yArrow);
+  
+  // Y-axis label
+  const ySprite = createTextSprite(yLabel, '#00ff00');
+  ySprite.position.set(0, axisLength * 1.2, 0);
+  group.add(ySprite);
+  
+  // Z-axis (blue) - ArrowHelper includes both line and arrowhead
+  const zArrow = new THREE.ArrowHelper(
+    new THREE.Vector3(0, 0, 1),
+    new THREE.Vector3(0, 0, 0),
+    axisLength,
+    0x0000ff,
+    axisLength * 0.2,
+    axisLength * 0.1
+  );
+  group.add(zArrow);
+  
+  // Z-axis label
+  const zSprite = createTextSprite(zLabel, '#0000ff');
+  zSprite.position.set(0, 0, axisLength * 1.2);
+  group.add(zSprite);
+  
+  // Position the group at the center
+  group.position.set(center[0], center[1], center[2]);
+  
+  return group;
+}
+
 interface ColorPointCloudProps {
   image: HTMLImageElement | null;
   pipeline?: FilterInstance[];
@@ -78,9 +175,135 @@ interface ColorPointCloudProps {
   linearSaturation?: boolean;
   vibrance?: number;
   transformOrder: TransformationType[];
+  onColorSpaceChange?: (colorSpace: ColorSpace) => void;
 }
 
 const clamp = (val: number): number => Math.max(0, Math.min(255, val));
+
+// Color space type
+type ColorSpace = 'rgb' | 'hsv' | 'hsl' | 'lab' | 'ycbcr';
+
+// Color space conversion functions
+function rgbToHsv(rgb: RGB): { h: number; s: number; v: number } {
+  const r = rgb.r / 255;
+  const g = rgb.g / 255;
+  const b = rgb.b / 255;
+  
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  
+  let h = 0;
+  if (delta !== 0) {
+    if (max === r) {
+      h = ((g - b) / delta) % 6;
+    } else if (max === g) {
+      h = (b - r) / delta + 2;
+    } else {
+      h = (r - g) / delta + 4;
+    }
+  }
+  h = h * 60;
+  if (h < 0) h += 360;
+  
+  const s = max === 0 ? 0 : delta / max;
+  const v = max;
+  
+  return { h, s, v };
+}
+
+function rgbToHsl(rgb: RGB): { h: number; s: number; l: number } {
+  const r = rgb.r / 255;
+  const g = rgb.g / 255;
+  const b = rgb.b / 255;
+  
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+  
+  let h = 0;
+  if (delta !== 0) {
+    if (max === r) {
+      h = ((g - b) / delta) % 6;
+    } else if (max === g) {
+      h = (b - r) / delta + 2;
+    } else {
+      h = (r - g) / delta + 4;
+    }
+  }
+  h = h * 60;
+  if (h < 0) h += 360;
+  
+  const l = (max + min) / 2;
+  const s = delta === 0 ? 0 : delta / (1 - Math.abs(2 * l - 1));
+  
+  return { h, s, l };
+}
+
+// RGB to XYZ conversion (D65 illuminant, sRGB reference white)
+function rgbToXyz(rgb: RGB): { x: number; y: number; z: number } {
+  // Convert sRGB to linear RGB
+  const linearize = (c: number) => {
+    const val = c / 255;
+    return val <= 0.04045 ? val / 12.92 : Math.pow((val + 0.055) / 1.055, 2.4);
+  };
+  
+  const r = linearize(rgb.r);
+  const g = linearize(rgb.g);
+  const b = linearize(rgb.b);
+  
+  // sRGB to XYZ matrix (D65)
+  const x = r * 0.4124564 + g * 0.3575761 + b * 0.1804375;
+  const y = r * 0.2126729 + g * 0.7151522 + b * 0.0721750;
+  const z = r * 0.0193339 + g * 0.1191920 + b * 0.9503041;
+  
+  return { x, y, z };
+}
+
+// XYZ to Lab conversion (D65 reference white)
+function xyzToLab(xyz: { x: number; y: number; z: number }): { l: number; a: number; b: number } {
+  // D65 reference white (sRGB)
+  const xn = 0.95047;
+  const yn = 1.0;
+  const zn = 1.08883;
+  
+  // Clamp values to avoid division by zero or negative values
+  const x = Math.max(0, xyz.x);
+  const y = Math.max(0, xyz.y);
+  const z = Math.max(0, xyz.z);
+  
+  const fx = x / xn > 0.008856 ? Math.pow(x / xn, 1/3) : (7.787 * x / xn + 16/116);
+  const fy = y / yn > 0.008856 ? Math.pow(y / yn, 1/3) : (7.787 * y / yn + 16/116);
+  const fz = z / zn > 0.008856 ? Math.pow(z / zn, 1/3) : (7.787 * z / zn + 16/116);
+  
+  const l = 116 * fy - 16;
+  const a = 500 * (fx - fy);
+  const b = 200 * (fy - fz);
+  
+  return { l, a, b };
+}
+
+function rgbToLab(rgb: RGB): { l: number; a: number; b: number } {
+  const xyz = rgbToXyz(rgb);
+  return xyzToLab(xyz);
+}
+
+function rgbToYcbcr(rgb: RGB): { y: number; cb: number; cr: number } {
+  // ITU-R BT.601 standard conversion
+  // Y is in range 0-255
+  // Cb and Cr formulas produce values in range 0-255 (centered at 128)
+  // We subtract 128 to get -128 to 127 range for visualization
+  const y = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
+  const cb = -0.168736 * rgb.r - 0.331264 * rgb.g + 0.5 * rgb.b + 128;
+  const cr = 0.5 * rgb.r - 0.418688 * rgb.g - 0.081312 * rgb.b + 128;
+  
+  // Normalize Cb and Cr to -128 to 127 range
+  return { 
+    y, 
+    cb: cb - 128, 
+    cr: cr - 128 
+  };
+}
 
 // Reuse transformation functions from ImageCanvas
 const buildBrightnessMatrix = (value: number): { matrix: number[]; offset: number[] } => {
@@ -290,13 +513,18 @@ const applyMatrixToImageData = (imageData: ImageData, matrix: number[], offset: 
   }
 };
 
-export function ColorPointCloud({ image, pipeline, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder }: ColorPointCloudProps) {
+export function ColorPointCloud({ image, pipeline, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, onColorSpaceChange }: ColorPointCloudProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const pointsRef = useRef<THREE.Points | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const axesGroupRef = useRef<THREE.Group | null>(null);
+  
+  // Color space selection state
+  const [colorSpace, setColorSpace] = useState<ColorSpace>('rgb');
+  const [showAxes, setShowAxes] = useState<boolean>(false);
   
   // 3D navigation state
   const [yaw, setYaw] = useState<number>(-35);
@@ -321,6 +549,11 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
     targetRef.current = target;
   }, [target]);
 
+  // Notify parent when color space changes
+  useEffect(() => {
+    onColorSpaceChange?.(colorSpace);
+  }, [colorSpace, onColorSpaceChange]);
+
   // Helper function to update camera position from quaternion, distance, and target
   const updateCameraPosition = (camera: THREE.PerspectiveCamera, q: Quaternion, dist: number, tgt: [number, number, number]) => {
     // Start with base direction (looking from positive x, y, z towards origin)
@@ -329,230 +562,387 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
     // Position camera at target + rotated direction * distance
     const targetVec = new THREE.Vector3(tgt[0], tgt[1], tgt[2]);
     camera.position.copy(targetVec.clone().add(rotatedDir.clone().multiplyScalar(dist)));
+    
+    // Calculate view direction (from camera to target)
+    const viewDir = new THREE.Vector3().subVectors(targetVec, camera.position).normalize();
+    
+    // Update up vector based on rotation
+    const worldUp = new THREE.Vector3(0, 1, 0);
+    let rotatedUp = rotateVector(worldUp.x, worldUp.y, worldUp.z, q).normalize();
+    
+    // Ensure up vector is never parallel to view direction (causes lookAt to fail)
+    const dotProduct = rotatedUp.dot(viewDir);
+    const threshold = 0.99; // If almost parallel (cosine close to 1 or -1)
+    
+    if (Math.abs(dotProduct) > threshold) {
+      // Find a perpendicular vector by crossing with a default direction
+      // Try different default directions to avoid edge cases
+      const defaultDir = Math.abs(viewDir.x) < 0.9 
+        ? new THREE.Vector3(1, 0, 0) 
+        : new THREE.Vector3(0, 0, 1);
+      const perpendicular = new THREE.Vector3().crossVectors(viewDir, defaultDir).normalize();
+      rotatedUp = new THREE.Vector3().crossVectors(perpendicular, viewDir).normalize();
+    }
+    
+    // Set up vector before lookAt to ensure consistent orientation
+    camera.up.copy(rotatedUp);
     camera.lookAt(targetVec);
   };
 
   // Extract and transform pixel data
   const transformedPixels = useMemo(() => {
-    if (!image) return null;
+    if (!image || !image.complete || image.naturalWidth === 0) return null;
 
-    const canvas = document.createElement('canvas');
-    canvas.width = image.width;
-    canvas.height = image.height;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return null;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return null;
 
-    ctx.drawImage(image, 0, 0);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const { data } = imageData;
+      ctx.drawImage(image, 0, 0);
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const { data } = imageData;
 
-    // Apply transformations (same logic as ImageCanvas)
-    if (!pipeline) {
-      // Legacy path using transformOrder
-      type Step = { type: TransformationType; value: number } | { type: 'vibrance'; value: number };
-      const steps: Step[] = transformOrder.map(t => {
-        if (t === 'brightness') return { type: t, value: brightness };
-        if (t === 'contrast') return { type: t, value: contrast };
-        if (t === 'saturation') return { type: t, value: saturation };
-        if (t === 'hue') return { type: t, value: hue };
-        return { type: 'vibrance' as const, value: vibrance };
-      }) as Step[];
+      // Apply transformations (same logic as ImageCanvas)
+      if (!pipeline) {
+        // Legacy path using transformOrder
+        type Step = { type: TransformationType; value: number } | { type: 'vibrance'; value: number };
+        const steps: Step[] = transformOrder.map(t => {
+          if (t === 'brightness') return { type: t, value: brightness };
+          if (t === 'contrast') return { type: t, value: contrast };
+          if (t === 'saturation') return { type: t, value: saturation };
+          if (t === 'hue') return { type: t, value: hue };
+          return { type: 'vibrance' as const, value: vibrance };
+        }) as Step[];
 
-      let i = 0;
-      while (i < steps.length) {
-        const matrixBatch: Array<{ matrix: number[]; offset: number[] }> = [];
-        let batchEnd = i;
-        while (batchEnd < steps.length) {
-          const s = steps[batchEnd];
-          const stype = s.type as TransformationType;
-          const sval = (s as any).value as number;
-          const isPerPixel = stype === 'vibrance' || (stype === 'saturation' && linearSaturation);
-          if (isPerPixel) break;
-          if (stype === 'brightness') matrixBatch.push(buildBrightnessMatrix(sval));
-          else if (stype === 'contrast') matrixBatch.push(buildContrastMatrix(sval));
-          else if (stype === 'saturation') matrixBatch.push({ matrix: buildSaturationMatrix(sval), offset: [0, 0, 0] });
-          else if (stype === 'hue') matrixBatch.push({ matrix: buildHueMatrix(sval), offset: [0, 0, 0] });
-          batchEnd++;
-        }
-        if (matrixBatch.length > 0) {
-          const composed = composeAffineTransforms(matrixBatch);
-          applyMatrixToImageData(imageData, composed.matrix, composed.offset);
-          i = batchEnd;
-        } else {
-          const s = steps[i];
-          const stype = s.type as TransformationType;
-          const sval = (s as any).value as number;
-          for (let j = 0; j < data.length; j += 4) {
-            const alpha = data[j + 3];
-            if (alpha === 0) continue;
-            const rgb: RGB = { r: data[j], g: data[j + 1], b: data[j + 2] };
-            let transformed: RGB = rgb;
-            if (stype === 'vibrance') {
-              transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
-            } else if (stype === 'saturation') {
-              transformed = applySaturationLinear(rgb, sval);
-            }
-            data[j] = transformed.r;
-            data[j + 1] = transformed.g;
-            data[j + 2] = transformed.b;
+        let i = 0;
+        while (i < steps.length) {
+          const matrixBatch: Array<{ matrix: number[]; offset: number[] }> = [];
+          let batchEnd = i;
+          while (batchEnd < steps.length) {
+            const s = steps[batchEnd];
+            const stype = s.type as TransformationType;
+            const sval = (s as any).value as number;
+            const isPerPixel = stype === 'vibrance' || (stype === 'saturation' && linearSaturation);
+            if (isPerPixel) break;
+            if (stype === 'brightness') matrixBatch.push(buildBrightnessMatrix(sval));
+            else if (stype === 'contrast') matrixBatch.push(buildContrastMatrix(sval));
+            else if (stype === 'saturation') matrixBatch.push({ matrix: buildSaturationMatrix(sval), offset: [0, 0, 0] });
+            else if (stype === 'hue') matrixBatch.push({ matrix: buildHueMatrix(sval), offset: [0, 0, 0] });
+            batchEnd++;
           }
-          i++;
-        }
-      }
-    } else {
-      // Instance-based path
-      for (const inst of [...pipeline].reverse()) {
-        if (!inst.enabled) continue;
-        if (inst.kind === 'brightness' || inst.kind === 'contrast' || inst.kind === 'saturation' || inst.kind === 'hue' || inst.kind === 'vibrance') {
-          const kind = inst.kind;
-          if (kind === 'brightness' || kind === 'contrast' || (kind === 'saturation' && !linearSaturation) || kind === 'hue') {
-            const batch: Array<{ matrix: number[]; offset: number[] }> = [];
-            if (kind === 'brightness') batch.push(buildBrightnessMatrix((inst.params as { value: number }).value));
-            if (kind === 'contrast') batch.push(buildContrastMatrix((inst.params as { value: number }).value));
-            if (kind === 'saturation' && !linearSaturation) batch.push({ matrix: buildSaturationMatrix((inst.params as { value: number }).value), offset: [0, 0, 0] });
-            if (kind === 'hue') batch.push({ matrix: buildHueMatrix((inst.params as { hue: number }).hue), offset: [0, 0, 0] });
-            const composed = composeAffineTransforms(batch);
+          if (matrixBatch.length > 0) {
+            const composed = composeAffineTransforms(matrixBatch);
             applyMatrixToImageData(imageData, composed.matrix, composed.offset);
+            i = batchEnd;
           } else {
-            const sval = kind === 'vibrance' ? (inst.params as { vibrance: number }).vibrance : (inst.params as { value: number }).value;
+            const s = steps[i];
+            const stype = s.type as TransformationType;
+            const sval = (s as any).value as number;
             for (let j = 0; j < data.length; j += 4) {
               const alpha = data[j + 3];
               if (alpha === 0) continue;
               const rgb: RGB = { r: data[j], g: data[j + 1], b: data[j + 2] };
               let transformed: RGB = rgb;
-              if (kind === 'vibrance') transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
-              if (kind === 'saturation') transformed = applySaturationLinear(rgb, sval);
+              if (stype === 'vibrance') {
+                transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
+              } else if (stype === 'saturation') {
+                transformed = applySaturationLinear(rgb, sval);
+              }
               data[j] = transformed.r;
               data[j + 1] = transformed.g;
               data[j + 2] = transformed.b;
             }
+            i++;
           }
-        } else if (inst.kind === 'blur') {
-          const p = inst.params as BlurParams;
-          const out = cpuConvolutionBackend.blur(imageData, p);
-          for (let j = 0; j < data.length; j++) data[j] = out.data[j];
-        } else if (inst.kind === 'sharpen') {
-          const p = inst.params as SharpenParams;
-          const out = cpuConvolutionBackend.sharpen(imageData, p);
-          for (let j = 0; j < data.length; j++) data[j] = out.data[j];
-        } else if (inst.kind === 'edge') {
-          const p = inst.params as EdgeParams;
-          const out = cpuConvolutionBackend.edge(imageData, p);
-          for (let j = 0; j < data.length; j++) data[j] = out.data[j];
-        } else if (inst.kind === 'denoise') {
-          const p = inst.params as DenoiseParams;
-          const out = cpuConvolutionBackend.denoise(imageData, p);
-          for (let j = 0; j < data.length; j++) data[j] = out.data[j];
-        } else if (inst.kind === 'customConv') {
-          const p = inst.params as CustomConvParams;
-          const out = cpuConvolutionBackend.customConv(imageData, p);
-          for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+        }
+      } else {
+        // Instance-based path
+        for (const inst of [...pipeline].reverse()) {
+          if (!inst.enabled) continue;
+          if (inst.kind === 'brightness' || inst.kind === 'contrast' || inst.kind === 'saturation' || inst.kind === 'hue' || inst.kind === 'vibrance') {
+            const kind = inst.kind;
+            if (kind === 'brightness' || kind === 'contrast' || (kind === 'saturation' && !linearSaturation) || kind === 'hue') {
+              const batch: Array<{ matrix: number[]; offset: number[] }> = [];
+              if (kind === 'brightness') batch.push(buildBrightnessMatrix((inst.params as { value: number }).value));
+              if (kind === 'contrast') batch.push(buildContrastMatrix((inst.params as { value: number }).value));
+              if (kind === 'saturation' && !linearSaturation) batch.push({ matrix: buildSaturationMatrix((inst.params as { value: number }).value), offset: [0, 0, 0] });
+              if (kind === 'hue') batch.push({ matrix: buildHueMatrix((inst.params as { hue: number }).hue), offset: [0, 0, 0] });
+              const composed = composeAffineTransforms(batch);
+              applyMatrixToImageData(imageData, composed.matrix, composed.offset);
+            } else {
+              const sval = kind === 'vibrance' ? (inst.params as { vibrance: number }).vibrance : (inst.params as { value: number }).value;
+              for (let j = 0; j < data.length; j += 4) {
+                const alpha = data[j + 3];
+                if (alpha === 0) continue;
+                const rgb: RGB = { r: data[j], g: data[j + 1], b: data[j + 2] };
+                let transformed: RGB = rgb;
+                if (kind === 'vibrance') transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
+                if (kind === 'saturation') transformed = applySaturationLinear(rgb, sval);
+                data[j] = transformed.r;
+                data[j + 1] = transformed.g;
+                data[j + 2] = transformed.b;
+              }
+            }
+          } else if (inst.kind === 'blur') {
+            const p = inst.params as BlurParams;
+            const out = cpuConvolutionBackend.blur(imageData, p);
+            for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+          } else if (inst.kind === 'sharpen') {
+            const p = inst.params as SharpenParams;
+            const out = cpuConvolutionBackend.sharpen(imageData, p);
+            for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+          } else if (inst.kind === 'edge') {
+            const p = inst.params as EdgeParams;
+            const out = cpuConvolutionBackend.edge(imageData, p);
+            for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+          } else if (inst.kind === 'denoise') {
+            const p = inst.params as DenoiseParams;
+            const out = cpuConvolutionBackend.denoise(imageData, p);
+            for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+          } else if (inst.kind === 'customConv') {
+            const p = inst.params as CustomConvParams;
+            const out = cpuConvolutionBackend.customConv(imageData, p);
+            for (let j = 0; j < data.length; j++) data[j] = out.data[j];
+          }
         }
       }
-    }
 
-    // Extract pixel data
-    const pixels: { position: [number, number, number]; color: [number, number, number] }[] = [];
-    for (let i = 0; i < data.length; i += 4) {
-      const alpha = data[i + 3];
-      if (alpha === 0) continue; // Skip transparent pixels
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      // Position at (R, G, B) coordinates, centered around origin (-128 to 128)
-      pixels.push({
-        position: [r - 128, g - 128, b - 128],
-        color: [r / 255, g / 255, b / 255]
-      });
-    }
+      // Extract pixel data and convert to selected color space
+      const pixels: { position: [number, number, number]; color: [number, number, number] }[] = [];
+      for (let i = 0; i < data.length; i += 4) {
+        const alpha = data[i + 3];
+        if (alpha === 0) continue; // Skip transparent pixels
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        const rgb: RGB = { r, g, b };
+        
+        // Convert to selected color space and map to 3D coordinates
+        let position: [number, number, number];
+        
+        if (colorSpace === 'rgb') {
+          // RGB: centered around origin (-128 to 128)
+          position = [r - 128, g - 128, b - 128];
+        } else if (colorSpace === 'hsv') {
+          const hsv = rgbToHsv(rgb);
+          // H scaled to -180 to 180, S/V to -128 to 127
+          position = [hsv.h * 2 - 180, hsv.s * 255 - 128, hsv.v * 255 - 128];
+        } else if (colorSpace === 'hsl') {
+          const hsl = rgbToHsl(rgb);
+          // H scaled to -180 to 180, S/L to -128 to 127
+          position = [hsl.h * 2 - 180, hsl.s * 255 - 128, hsl.l * 255 - 128];
+        } else if (colorSpace === 'lab') {
+          const lab = rgbToLab(rgb);
+          // L scaled to -128 to 127, a/b already in approximate range
+          // Clamp a and b to reasonable range to avoid extreme values
+          position = [
+            Math.max(-200, Math.min(200, lab.a)),
+            Math.max(-200, Math.min(200, lab.l * 2.55 - 128)),
+            Math.max(-200, Math.min(200, lab.b))
+          ];
+        } else if (colorSpace === 'ycbcr') {
+          const ycbcr = rgbToYcbcr(rgb);
+          // Y scaled to -128 to 127, Cb/Cr already in range
+          position = [ycbcr.y - 128, ycbcr.cb, ycbcr.cr];
+        } else {
+          // Fallback to RGB
+          position = [r - 128, g - 128, b - 128];
+        }
+        
+        // Validate position values (check for NaN or Infinity)
+        if (!position.every(val => isFinite(val) && !isNaN(val))) {
+          // Skip invalid pixels
+          continue;
+        }
+        
+        // Always use RGB for point colors (for consistent visual appearance)
+        pixels.push({
+          position,
+          color: [r / 255, g / 255, b / 255]
+        });
+      }
 
-    return pixels;
-  }, [image, pipeline, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder]);
+      return pixels;
+    } catch (error) {
+      console.error('Error processing pixels:', error);
+      return null;
+    }
+  }, [image, pipeline, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder, colorSpace]);
+
+  // Calculate center of point cloud
+  const cloudCenter = useMemo(() => {
+    if (!transformedPixels || transformedPixels.length === 0) {
+      return [0, 0, 0] as [number, number, number];
+    }
+    
+    let sumX = 0, sumY = 0, sumZ = 0;
+    transformedPixels.forEach(pixel => {
+      sumX += pixel.position[0];
+      sumY += pixel.position[1];
+      sumZ += pixel.position[2];
+    });
+    
+    const count = transformedPixels.length;
+    return [sumX / count, sumY / count, sumZ / count] as [number, number, number];
+  }, [transformedPixels]);
+
+  // Get axis labels based on color space
+  const getAxisLabels = (space: ColorSpace): { x: string; y: string; z: string } => {
+    switch (space) {
+      case 'rgb':
+        return { x: 'R', y: 'G', z: 'B' };
+      case 'hsv':
+        return { x: 'H', y: 'S', z: 'V' };
+      case 'hsl':
+        return { x: 'H', y: 'S', z: 'L' };
+      case 'lab':
+        return { x: 'a', y: 'L', z: 'b' };
+      case 'ycbcr':
+        return { x: 'Y', y: 'Cb', z: 'Cr' };
+      default:
+        return { x: 'X', y: 'Y', z: 'Z' };
+    }
+  };
 
   // Initialize Three.js scene (only once)
   useEffect(() => {
     if (!containerRef.current) return;
 
     const container = containerRef.current;
-    const width = container.clientWidth;
-    const height = container.clientHeight;
+    let resizeObserver: ResizeObserver | null = null;
     
-    if (width === 0 || height === 0) return;
+    // Function to initialize or update Three.js
+    const initThree = () => {
+      try {
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        
+        if (width === 0 || height === 0) return false;
 
-    // Scene
-    const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a1a);
-    sceneRef.current = scene;
+        // If renderer already exists, just update size
+        if (rendererRef.current && sceneRef.current && cameraRef.current) {
+          cameraRef.current.aspect = width / height;
+          cameraRef.current.updateProjectionMatrix();
+          rendererRef.current.setSize(width, height);
+          return true;
+        }
 
-    // Camera - position will be set by quaternion rotation
-    const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
-    updateCameraPosition(camera, rotationQuaternionRef.current, distanceRef.current, targetRef.current);
-    cameraRef.current = camera;
+        // Scene
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+        sceneRef.current = scene;
 
-    // Renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(width, height);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    container.appendChild(renderer.domElement);
-    rendererRef.current = renderer;
+        // Camera - position will be set by quaternion rotation
+        const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000);
+        camera.up.set(0, 1, 0); // Set up vector to Y axis
+        updateCameraPosition(camera, rotationQuaternionRef.current, distanceRef.current, targetRef.current);
+        cameraRef.current = camera;
 
-    // Points geometry (will be populated later)
-    const geometry = new THREE.BufferGeometry();
-    const material = new THREE.PointsMaterial({
-      size: 1,
-      vertexColors: true,
-      sizeAttenuation: false
-    });
+        // Renderer
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(width, height);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        container.appendChild(renderer.domElement);
+        rendererRef.current = renderer;
 
-    const points = new THREE.Points(geometry, material);
-    scene.add(points);
-    pointsRef.current = points;
+        // Points geometry (will be populated later)
+        const geometry = new THREE.BufferGeometry();
+        const material = new THREE.PointsMaterial({
+          size: 1,
+          vertexColors: true,
+          sizeAttenuation: false
+        });
 
-    // Animation loop
-    const animate = () => {
-      if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
-      animationFrameRef.current = requestAnimationFrame(animate);
-      rendererRef.current.render(sceneRef.current, cameraRef.current);
+        const points = new THREE.Points(geometry, material);
+        scene.add(points);
+        pointsRef.current = points;
+
+        // Animation loop
+        const animate = () => {
+          if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
+          animationFrameRef.current = requestAnimationFrame(animate);
+          rendererRef.current.render(sceneRef.current, cameraRef.current);
+        };
+        animate();
+        
+        return true;
+      } catch (error) {
+        console.error('Error initializing Three.js:', error);
+        return false;
+      }
     };
-    animate();
+
+    // Try to initialize immediately
+    let timeoutId: NodeJS.Timeout | null = null;
+    if (!initThree()) {
+      // If container has no size, wait a bit and try again
+      timeoutId = setTimeout(() => {
+        initThree();
+      }, 100);
+    }
 
     // Handle resize
     const handleResize = () => {
       if (!containerRef.current || !cameraRef.current || !rendererRef.current) return;
       const width = containerRef.current.clientWidth;
       const height = containerRef.current.clientHeight;
+      if (width === 0 || height === 0) return;
       cameraRef.current.aspect = width / height;
       cameraRef.current.updateProjectionMatrix();
       rendererRef.current.setSize(width, height);
     };
     window.addEventListener('resize', handleResize);
 
+    // Use ResizeObserver to handle container size changes
+    if (typeof ResizeObserver !== 'undefined') {
+      resizeObserver = new ResizeObserver(() => {
+        handleResize();
+        // If not initialized yet, try again
+        if (!rendererRef.current && containerRef.current) {
+          initThree();
+        }
+      });
+      resizeObserver.observe(container);
+    }
+
     // Cleanup function
     return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
       window.removeEventListener('resize', handleResize);
-      if (containerRef.current && renderer.domElement.parentNode) {
-        containerRef.current.removeChild(renderer.domElement);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
       }
-      renderer.dispose();
-      geometry.dispose();
-      material.dispose();
+      if (rendererRef.current) {
+        if (containerRef.current && rendererRef.current.domElement.parentNode) {
+          containerRef.current.removeChild(rendererRef.current.domElement);
+        }
+        rendererRef.current.dispose();
+      }
+      if (pointsRef.current) {
+        pointsRef.current.geometry.dispose();
+        (pointsRef.current.material as THREE.PointsMaterial).dispose();
+      }
     };
   }, []); // Only run once on mount
 
-  // Update camera position when zoom changes (but preserve rotation)
+  // Update camera position when distance or target changes (but preserve rotation)
   useEffect(() => {
-    if (!cameraRef.current || isDraggingRef.current) return;
-    updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, baseDistance * zoom);
-  }, [zoom]);
+    if (!cameraRef.current || isDraggingRef.current || isPanningRef.current) return;
+    updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, distance, target);
+  }, [distance, target]);
 
-  // Sync quaternion with yaw/pitch when they change (but not during dragging or zooming)
+  // Sync quaternion with yaw/pitch when they change (but not during dragging or panning)
   useEffect(() => {
-    if (!isDraggingRef.current && cameraRef.current) {
+    if (!isDraggingRef.current && !isPanningRef.current && cameraRef.current) {
       rotationQuaternionRef.current = eulerToQuaternion(yaw, pitch);
-      updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, baseDistance * zoom);
+      updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, distance, target);
     }
   }, [yaw, pitch]);
 
@@ -586,91 +976,179 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
     
     const onDown = (e: MouseEvent) => {
       const rect = canvas.getBoundingClientRect();
-      const sphere = screenToSphere(e.clientX, e.clientY, rect);
-      if (sphere) {
-        isDraggingRef.current = true;
-        setIsDragging(true);
-        startSphereRef.current = sphere;
+      
+      // Right click or middle mouse = pan
+      if (e.button === 2 || e.button === 1) {
+        e.preventDefault();
+        isPanningRef.current = true;
+        lastPanPositionRef.current = { x: e.clientX, y: e.clientY };
+        return;
+      }
+      
+      // Left click = rotate
+      if (e.button === 0) {
+        const sphere = screenToSphere(e.clientX, e.clientY, rect);
+        if (sphere) {
+          isDraggingRef.current = true;
+          setIsDragging(true);
+          startSphereRef.current = sphere;
+        }
       }
     };
     
     const onMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current || !startSphereRef.current) return;
-      
-      const rect = canvas.getBoundingClientRect();
-      const currentSphere = screenToSphere(e.clientX, e.clientY, rect);
-      if (!currentSphere) return;
-      
-      // Calculate rotation axis and angle
-      const [sx, sy, sz] = startSphereRef.current;
-      const [cx, cy, cz] = currentSphere;
-      
-      // Cross product gives rotation axis
-      const axis: [number, number, number] = [
-        sy * cz - sz * cy,
-        sz * cx - sx * cz,
-        sx * cy - sy * cx,
-      ];
-      
-      const axisLength = Math.sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
-      if (axisLength < 0.0001) return; // Too small movement
-      
-      // Normalize axis
-      const normalizedAxis: [number, number, number] = [
-        axis[0] / axisLength,
-        axis[1] / axisLength,
-        axis[2] / axisLength,
-      ];
-      
-      // Dot product gives angle
-      const dot = sx * cx + sy * cy + sz * cz;
-      const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 0.8; // Scale for sensitivity
-      
-      // Create rotation quaternion
-      const deltaQ = quaternionFromAxisAngle(normalizedAxis, angle);
-      
-      // Apply rotation
-      rotationQuaternionRef.current = quaternionMultiply(deltaQ, rotationQuaternionRef.current);
-      
-      // Convert back to Euler for state
-      const euler = quaternionToEuler(rotationQuaternionRef.current);
-      setYaw(euler.yaw);
-      setPitch(euler.pitch);
-      
-      // Update camera position
-      if (cameraRef.current) {
-        updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, baseDistance * zoomRef.current);
+      // Panning (right/middle mouse drag)
+      if (isPanningRef.current && lastPanPositionRef.current && cameraRef.current) {
+        const deltaX = e.clientX - lastPanPositionRef.current.x;
+        const deltaY = e.clientY - lastPanPositionRef.current.y;
+        
+        // Calculate pan distance based on camera distance
+        const panSpeed = distanceRef.current * 0.001;
+        const panX = -deltaX * panSpeed;
+        const panY = deltaY * panSpeed;
+        
+        // Get camera's right and up vectors
+        const targetVec = new THREE.Vector3(targetRef.current[0], targetRef.current[1], targetRef.current[2]);
+        const cameraDir = new THREE.Vector3().subVectors(targetVec, cameraRef.current.position).normalize();
+        const worldUp = new THREE.Vector3(0, 1, 0);
+        const cameraRight = new THREE.Vector3().crossVectors(cameraDir, worldUp).normalize();
+        const cameraUp = new THREE.Vector3().crossVectors(cameraRight, cameraDir).normalize();
+        
+        // Pan the target
+        const newTarget: [number, number, number] = [
+          targetRef.current[0] + cameraRight.x * panX + cameraUp.x * panY,
+          targetRef.current[1] + cameraRight.y * panX + cameraUp.y * panY,
+          targetRef.current[2] + cameraRight.z * panX + cameraUp.z * panY,
+        ];
+        setTarget(newTarget);
+        lastPanPositionRef.current = { x: e.clientX, y: e.clientY };
+        return;
       }
       
-      // Update start position for next frame
-      startSphereRef.current = currentSphere;
+      // Rotating (left mouse drag)
+      if (isDraggingRef.current && startSphereRef.current) {
+        const rect = canvas.getBoundingClientRect();
+        const currentSphere = screenToSphere(e.clientX, e.clientY, rect);
+        if (!currentSphere) return;
+        
+        // Calculate rotation axis and angle
+        const [sx, sy, sz] = startSphereRef.current;
+        const [cx, cy, cz] = currentSphere;
+        
+        // Cross product gives rotation axis
+        const axis: [number, number, number] = [
+          sy * cz - sz * cy,
+          sz * cx - sx * cz,
+          sx * cy - sy * cx,
+        ];
+        
+        const axisLength = Math.sqrt(axis[0] * axis[0] + axis[1] * axis[1] + axis[2] * axis[2]);
+        if (axisLength < 0.0001) return; // Too small movement
+        
+        // Normalize axis
+        const normalizedAxis: [number, number, number] = [
+          axis[0] / axisLength,
+          axis[1] / axisLength,
+          axis[2] / axisLength,
+        ];
+        
+        // Dot product gives angle
+        const dot = sx * cx + sy * cy + sz * cz;
+        const angle = Math.acos(Math.max(-1, Math.min(1, dot))) * 0.8; // Scale for sensitivity
+        
+        // Create rotation quaternion
+        const deltaQ = quaternionFromAxisAngle(normalizedAxis, angle);
+        
+        // Apply rotation
+        rotationQuaternionRef.current = quaternionMultiply(deltaQ, rotationQuaternionRef.current);
+        
+        // Convert back to Euler for state
+        const euler = quaternionToEuler(rotationQuaternionRef.current);
+        setYaw(euler.yaw);
+        setPitch(euler.pitch);
+        
+        // Update camera position
+        if (cameraRef.current) {
+          updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, distanceRef.current, targetRef.current);
+        }
+        
+        // Update start position for next frame
+        startSphereRef.current = currentSphere;
+      }
     };
     
-    const onUp = () => {
-      isDraggingRef.current = false;
-      setIsDragging(false);
-      startSphereRef.current = null;
+    const onUp = (e: MouseEvent) => {
+      if (e.button === 2 || e.button === 1) {
+        isPanningRef.current = false;
+        lastPanPositionRef.current = null;
+      } else if (e.button === 0) {
+        isDraggingRef.current = false;
+        setIsDragging(false);
+        startSphereRef.current = null;
+      }
     };
     
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const factor = Math.exp(e.deltaY * 0.0015); // Reversed: positive deltaY zooms in
-      const newZoom = Math.max(0.5, Math.min(3, zoomRef.current * factor));
-      setZoom(newZoom);
-      // Update camera immediately to avoid delay
-      if (cameraRef.current) {
-        updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, baseDistance * newZoom);
+      if (!cameraRef.current) return;
+      
+      const factor = Math.exp(e.deltaY * 0.0015);
+      const oldDistance = distanceRef.current;
+      const newDistance = Math.max(1, Math.min(5000, oldDistance * factor));
+      
+      // Calculate zoom-to-cursor: find 3D point under cursor
+      const rect = canvas.getBoundingClientRect();
+      const mouse = new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+      
+      // Create a raycaster to find the point under the cursor
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(mouse, cameraRef.current);
+      
+      // Calculate the intersection point on a plane perpendicular to camera direction through target
+      const targetVec = new THREE.Vector3(targetRef.current[0], targetRef.current[1], targetRef.current[2]);
+      const cameraDir = new THREE.Vector3().subVectors(targetVec, cameraRef.current.position).normalize();
+      // Plane normal is camera direction, plane passes through target
+      const plane = new THREE.Plane();
+      plane.setFromNormalAndCoplanarPoint(cameraDir, targetVec);
+      const intersection = new THREE.Vector3();
+      const hasIntersection = raycaster.ray.intersectPlane(plane, intersection);
+      
+      // If we found an intersection, adjust the target to zoom towards that point
+      if (hasIntersection) {
+        const zoomRatio = 1 - (newDistance / oldDistance);
+        const targetOffset = new THREE.Vector3().subVectors(intersection, targetVec);
+        const newTarget: [number, number, number] = [
+          targetRef.current[0] + targetOffset.x * zoomRatio,
+          targetRef.current[1] + targetOffset.y * zoomRatio,
+          targetRef.current[2] + targetOffset.z * zoomRatio,
+        ];
+        targetRef.current = newTarget;
+        setTarget(newTarget);
       }
+      
+      // Update distance ref immediately to prevent race conditions
+      distanceRef.current = newDistance;
+      setDistance(newDistance);
+      // Update camera immediately using current quaternion (don't recalculate rotation)
+      updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, newDistance, targetRef.current);
+    };
+    
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault(); // Prevent context menu on right click
     };
     
     canvas.addEventListener('mousedown', onDown);
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
     canvas.addEventListener('wheel', onWheel, { passive: false });
+    canvas.addEventListener('contextmenu', onContextMenu);
     
     // Touch handlers with pinch-to-zoom support
     let initialDistance = 0;
-    let initialZoom = zoomRef.current;
+    let initialZoom = distanceRef.current;
     
     const onTDown = (e: TouchEvent) => {
       e.preventDefault();
@@ -688,7 +1166,7 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
         const t1 = e.touches[0];
         const t2 = e.touches[1];
         initialDistance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
-        initialZoom = zoomRef.current;
+        initialZoom = distanceRef.current;
         isDraggingRef.current = false;
         setIsDragging(false);
       }
@@ -731,20 +1209,20 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
         setPitch(euler.pitch);
         
         if (cameraRef.current) {
-          updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, baseDistance * zoomRef.current);
+          updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, distanceRef.current, targetRef.current);
         }
         
         startSphereRef.current = currentSphere;
       } else if (e.touches.length === 2 && initialDistance > 0) {
-        // Pinch to zoom
+        // Pinch to zoom (zoom to center for touch, since we don't have a cursor position)
         const t1 = e.touches[0];
         const t2 = e.touches[1];
         const currentDistance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
         const scale = currentDistance / initialDistance;
-        const newZoom = Math.max(0.5, Math.min(3, initialZoom * scale));
-        setZoom(newZoom);
+        const newDistance = Math.max(1, Math.min(5000, initialZoom * scale));
+        setDistance(newDistance);
         if (cameraRef.current) {
-          updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, baseDistance * newZoom);
+          updateCameraPosition(cameraRef.current, rotationQuaternionRef.current, newDistance, targetRef.current);
         }
       }
     };
@@ -777,6 +1255,7 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('contextmenu', onContextMenu);
       canvas.removeEventListener('touchstart', onTDown);
       window.removeEventListener('touchmove', onTMove);
       window.removeEventListener('touchend', onTUp);
@@ -814,6 +1293,56 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
     geometry.setDrawRange(0, transformedPixels.length);
   }, [transformedPixels]);
 
+  // Manage axes visibility and updates
+  useEffect(() => {
+    if (!sceneRef.current) return;
+
+    // Remove existing axes if any
+    if (axesGroupRef.current) {
+      sceneRef.current.remove(axesGroupRef.current);
+      // Dispose of geometries and materials
+      axesGroupRef.current.traverse((child) => {
+        if (child instanceof THREE.Mesh || child instanceof THREE.Line) {
+          if (child.geometry) child.geometry.dispose();
+          if (child.material) {
+            if (Array.isArray(child.material)) {
+              child.material.forEach(m => m.dispose());
+            } else {
+              child.material.dispose();
+            }
+          }
+        } else if (child instanceof THREE.Sprite) {
+          if (child.material) {
+            if (child.material.map) child.material.map.dispose();
+            child.material.dispose();
+          }
+        } else if (child instanceof THREE.ArrowHelper) {
+          // ArrowHelper manages its own disposal
+        }
+      });
+      axesGroupRef.current = null;
+    }
+
+    // Add axes if toggle is on
+    if (showAxes && transformedPixels && transformedPixels.length > 0) {
+      const labels = getAxisLabels(colorSpace);
+      // Calculate axis length based on point cloud spread
+      const positions = transformedPixels.map(p => p.position);
+      const xs = positions.map(p => p[0]);
+      const ys = positions.map(p => p[1]);
+      const zs = positions.map(p => p[2]);
+      const spreadX = Math.max(...xs) - Math.min(...xs);
+      const spreadY = Math.max(...ys) - Math.min(...ys);
+      const spreadZ = Math.max(...zs) - Math.min(...zs);
+      const maxSpread = Math.max(spreadX, spreadY, spreadZ);
+      const axisLength = Math.max(30, maxSpread * 0.15); // At least 30 units, or 15% of max spread
+      
+      const axes = createLabeledAxes(cloudCenter, axisLength, labels);
+      axesGroupRef.current = axes;
+      sceneRef.current.add(axes);
+    }
+  }, [showAxes, cloudCenter, colorSpace, transformedPixels]);
+
   if (!image) {
     return (
       <div className="w-full h-full flex items-center justify-center text-muted-foreground">
@@ -823,7 +1352,36 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
   }
 
   return (
-    <div ref={containerRef} className="w-full h-full min-h-[600px]" />
+    <div className="w-full h-full flex flex-col">
+      <div className="mb-3 flex items-center gap-4 flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <label className="text-sm font-medium text-foreground">Color Space:</label>
+          <Select value={colorSpace} onValueChange={(value) => setColorSpace(value as ColorSpace)}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="rgb">RGB</SelectItem>
+              <SelectItem value="hsv">HSV</SelectItem>
+              <SelectItem value="hsl">HSL</SelectItem>
+              <SelectItem value="lab">Lab</SelectItem>
+              <SelectItem value="ycbcr">YCbCr</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="show-axes" className="text-sm font-medium text-foreground cursor-pointer">
+            Show Axes
+          </Label>
+          <Switch
+            id="show-axes"
+            checked={showAxes}
+            onCheckedChange={setShowAxes}
+          />
+        </div>
+      </div>
+      <div ref={containerRef} className="w-full flex-1" style={{ minHeight: 0 }} />
+    </div>
   );
 }
 

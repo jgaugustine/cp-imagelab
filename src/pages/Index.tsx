@@ -271,6 +271,7 @@ export default function Index(_props: IndexProps) {
               convAnalysis={convAnalysis}
               onUpdateInstanceParams={_props.pipelineApi?.updateInstanceParams}
               image={image}
+              onActiveTabChange={setActiveTab}
             />
           </div>
         </div>
