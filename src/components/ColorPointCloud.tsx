@@ -229,6 +229,8 @@ interface ColorPointCloudProps {
   contrast: number;
   saturation: number;
   hue: number;
+  whites?: number;
+  blacks?: number;
   linearSaturation?: boolean;
   vibrance?: number;
   transformOrder: TransformationType[];
@@ -520,6 +522,35 @@ const applyHue = (rgb: RGB, value: number): RGB => {
   };
 };
 
+const smoothstep = (edge0: number, edge1: number, x: number): number => {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+};
+
+const applyWhites = (rgb: RGB, value: number): RGB => {
+  if (value === 0) return rgb;
+  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+  const weight = smoothstep(0.4, 0.8, luminance);
+  const adjustment = value * weight;
+  return {
+    r: clamp(rgb.r + adjustment),
+    g: clamp(rgb.g + adjustment),
+    b: clamp(rgb.b + adjustment)
+  };
+};
+
+const applyBlacks = (rgb: RGB, value: number): RGB => {
+  if (value === 0) return rgb;
+  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+  const weight = smoothstep(0.8, 0.2, luminance);
+  const adjustment = value * weight;
+  return {
+    r: clamp(rgb.r + adjustment),
+    g: clamp(rgb.g + adjustment),
+    b: clamp(rgb.b + adjustment)
+  };
+};
+
 const composeAffineTransforms = (transforms: Array<{ matrix: number[]; offset: number[] }>): { matrix: number[]; offset: number[] } => {
   if (transforms.length === 0) {
     return { matrix: [1, 0, 0, 0, 1, 0, 0, 0, 1], offset: [0, 0, 0] };
@@ -570,7 +601,7 @@ const applyMatrixToImageData = (imageData: ImageData, matrix: number[], offset: 
   }
 };
 
-export function ColorPointCloud({ image, pipeline, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, onColorSpaceChange }: ColorPointCloudProps) {
+export function ColorPointCloud({ image, pipeline, brightness, contrast, saturation, hue, whites = 0, blacks = 0, linearSaturation = false, vibrance = 0, transformOrder, onColorSpaceChange }: ColorPointCloudProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -670,6 +701,8 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
           if (t === 'contrast') return { type: t, value: contrast };
           if (t === 'saturation') return { type: t, value: saturation };
           if (t === 'hue') return { type: t, value: hue };
+          if (t === 'whites') return { type: t, value: whites };
+          if (t === 'blacks') return { type: t, value: blacks };
           return { type: 'vibrance' as const, value: vibrance };
         }) as Step[];
 
@@ -681,7 +714,7 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
             const s = steps[batchEnd];
             const stype = s.type as TransformationType;
             const sval = (s as any).value as number;
-            const isPerPixel = stype === 'vibrance' || (stype === 'saturation' && linearSaturation);
+            const isPerPixel = stype === 'vibrance' || stype === 'whites' || stype === 'blacks' || (stype === 'saturation' && linearSaturation);
             if (isPerPixel) break;
             if (stype === 'brightness') matrixBatch.push(buildBrightnessMatrix(sval));
             else if (stype === 'contrast') matrixBatch.push(buildContrastMatrix(sval));
@@ -706,6 +739,10 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
                 transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
               } else if (stype === 'saturation') {
                 transformed = applySaturationLinear(rgb, sval);
+              } else if (stype === 'whites') {
+                transformed = applyWhites(rgb, sval);
+              } else if (stype === 'blacks') {
+                transformed = applyBlacks(rgb, sval);
               }
               data[j] = transformed.r;
               data[j + 1] = transformed.g;
@@ -718,7 +755,7 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
         // Instance-based path
         for (const inst of [...pipeline].reverse()) {
           if (!inst.enabled) continue;
-          if (inst.kind === 'brightness' || inst.kind === 'contrast' || inst.kind === 'saturation' || inst.kind === 'hue' || inst.kind === 'vibrance') {
+          if (inst.kind === 'brightness' || inst.kind === 'contrast' || inst.kind === 'saturation' || inst.kind === 'hue' || inst.kind === 'vibrance' || inst.kind === 'whites' || inst.kind === 'blacks') {
             const kind = inst.kind;
             if (kind === 'brightness' || kind === 'contrast' || (kind === 'saturation' && !linearSaturation) || kind === 'hue') {
               const batch: Array<{ matrix: number[]; offset: number[] }> = [];
@@ -737,6 +774,8 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
                 let transformed: RGB = rgb;
                 if (kind === 'vibrance') transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
                 if (kind === 'saturation') transformed = applySaturationLinear(rgb, sval);
+                if (kind === 'whites') transformed = applyWhites(rgb, sval);
+                if (kind === 'blacks') transformed = applyBlacks(rgb, sval);
                 data[j] = transformed.r;
                 data[j + 1] = transformed.g;
                 data[j + 2] = transformed.b;
@@ -826,7 +865,7 @@ export function ColorPointCloud({ image, pipeline, brightness, contrast, saturat
       console.error('Error processing pixels:', error);
       return null;
     }
-  }, [image, pipeline, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder, colorSpace]);
+  }, [image, pipeline, brightness, contrast, saturation, hue, whites, blacks, linearSaturation, vibrance, transformOrder, colorSpace]);
 
   // Calculate center of point cloud - use a ref to avoid dependency issues
   const cloudCenterRef = useRef<[number, number, number]>([0, 0, 0]);

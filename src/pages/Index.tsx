@@ -32,8 +32,10 @@ export default function Index(_props: IndexProps) {
   const [saturation, setSaturation] = useState(1);
   const [hue, setHue] = useState(0);
   const [vibrance, setVibrance] = useState(0);
+  const [whites, setWhites] = useState(0);
+  const [blacks, setBlacks] = useState(0);
   const [linearSaturation, setLinearSaturation] = useState(false);
-  const [transformOrder, setTransformOrder] = useState<TransformationType[]>(['hue', 'vibrance', 'saturation', 'contrast', 'brightness']);
+  const [transformOrder, setTransformOrder] = useState<TransformationType[]>(['hue', 'vibrance', 'saturation', 'contrast', 'brightness', 'whites', 'blacks']);
   const [selectedRGB, setSelectedRGB] = useState<RGB | null>(null);
   const [activeTab, setActiveTab] = useState<string>('brightness');
   const [previewOriginal, setPreviewOriginal] = useState(false);
@@ -127,7 +129,7 @@ export default function Index(_props: IndexProps) {
                     </Button>
                     <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                   </div>
-                </div> : <div className="aspect-video w-full overflow-hidden"><CanvasAny key={dechanneled ? 'dechanneled' : 'normal'} image={image} pipeline={_props.pipeline} onSelectInstance={_props.setSelectedInstanceId} selectedInstanceId={_props.selectedInstanceId ?? null} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} linearSaturation={linearSaturation} vibrance={vibrance} transformOrder={transformOrder} onPixelSelect={setSelectedRGB} onSelectConvAnalysis={setConvAnalysis} previewOriginal={previewOriginal} dechanneled={dechanneled} /></div>}
+                </div> : <div className="aspect-video w-full overflow-hidden"><CanvasAny key={dechanneled ? 'dechanneled' : 'normal'} image={image} pipeline={_props.pipeline} onSelectInstance={_props.setSelectedInstanceId} selectedInstanceId={_props.selectedInstanceId ?? null} brightness={brightness} contrast={contrast} saturation={saturation} hue={hue} whites={whites} blacks={blacks} linearSaturation={linearSaturation} vibrance={vibrance} transformOrder={transformOrder} onPixelSelect={setSelectedRGB} onSelectConvAnalysis={setConvAnalysis} previewOriginal={previewOriginal} dechanneled={dechanneled} /></div>}
             </Card>
 
             <Card className="p-6 border-border bg-card">
@@ -219,6 +221,10 @@ export default function Index(_props: IndexProps) {
                 setVibrance={setVibrance}
                 hue={hue}
                 setHue={setHue}
+                whites={whites}
+                setWhites={setWhites}
+                blacks={blacks}
+                setBlacks={setBlacks}
                 onResetAll={() => {
                   // Reset legacy sliders
                   setBrightness(0);
@@ -226,6 +232,8 @@ export default function Index(_props: IndexProps) {
                   setSaturation(1);
                   setHue(0);
                   setVibrance(0);
+                  setWhites(0);
+                  setBlacks(0);
                   setLinearSaturation(false);
                   // Reset all pipeline instances to their defaults
                   if (_props.pipeline && _props.pipelineApi?.updateInstanceParams) {
@@ -260,6 +268,8 @@ export default function Index(_props: IndexProps) {
               saturation={saturation}
               hue={hue}
               vibrance={vibrance}
+              whites={whites}
+              blacks={blacks}
               linearSaturation={linearSaturation}
               onToggleLinearSaturation={setLinearSaturation}
               selectedRGB={selectedRGB || undefined}

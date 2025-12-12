@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FilterInstance, TransformationType } from "@/types/transformations";
 
-type Mode = 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | 'all';
+type Mode = 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | 'whites' | 'blacks' | 'all';
 
 interface RGBCubeVisualizerProps {
   mode: Mode;
@@ -11,6 +11,8 @@ interface RGBCubeVisualizerProps {
     saturation?: number;
     vibrance?: number;
     hue?: number; // degrees
+    whites?: number;
+    blacks?: number;
     linearSaturation?: boolean;
   };
   selectedRGB?: { r: number; g: number; b: number };
@@ -184,7 +186,7 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
   const startSphereRef = useRef<[number, number, number] | null>(null);
   const width = 320;
   const height = 220;
-  const prevParamsRef = useRef<{ brightness?: number; contrast?: number; saturation?: number; vibrance?: number; hue?: number; linearSaturation?: boolean }>({ ...params });
+  const prevParamsRef = useRef<{ brightness?: number; contrast?: number; saturation?: number; vibrance?: number; hue?: number; whites?: number; blacks?: number; linearSaturation?: boolean }>({ ...params });
 
   // Extract individual params for dependency tracking (prevents unnecessary recalculations)
   // This ensures the effect only runs when actual param values change, not just the object reference
@@ -193,6 +195,8 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
   const paramsSaturation = params.saturation;
   const paramsVibrance = params.vibrance;
   const paramsHue = params.hue;
+  const paramsWhites = params.whites;
+  const paramsBlacks = params.blacks;
   const paramsLinearSaturation = params.linearSaturation;
 
   function computeTransformedFor(original: { r: number; g: number; b: number }, forMode: Mode, customParams?: typeof params) {
@@ -242,6 +246,30 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
       const wB = linear ? 0.0722 : 0.114;
       const gray = wR * R + wG * G + wB * B;
       return { r: clamp(gray + (R - gray) * f), g: clamp(gray + (G - gray) * f), b: clamp(gray + (B - gray) * f) };
+    }
+    if (forMode === 'whites') {
+      const w = p.whites ?? 0;
+      if (w === 0) return { ...original };
+      const smoothstep = (edge0: number, edge1: number, x: number): number => {
+        const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+        return t * t * (3 - 2 * t);
+      };
+      const luminance = (0.299 * original.r + 0.587 * original.g + 0.114 * original.b) / 255;
+      const weight = smoothstep(0.4, 0.8, luminance);
+      const adjustment = w * weight;
+      return { r: clamp(original.r + adjustment), g: clamp(original.g + adjustment), b: clamp(original.b + adjustment) };
+    }
+    if (forMode === 'blacks') {
+      const b = p.blacks ?? 0;
+      if (b === 0) return { ...original };
+      const smoothstep = (edge0: number, edge1: number, x: number): number => {
+        const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+        return t * t * (3 - 2 * t);
+      };
+      const luminance = (0.299 * original.r + 0.587 * original.g + 0.114 * original.b) / 255;
+      const weight = smoothstep(0.8, 0.2, luminance);
+      const adjustment = b * weight;
+      return { r: clamp(original.r + adjustment), g: clamp(original.g + adjustment), b: clamp(original.b + adjustment) };
     }
     // hue
     const hue = p.hue ?? 0;
@@ -314,6 +342,30 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
       const wB = (params.linearSaturation ?? false) ? 0.0722 : 0.114;
       const gray = wR * R + wG * G + wB * B;
       return { r: clamp(gray + (R - gray) * f), g: clamp(gray + (G - gray) * f), b: clamp(gray + (B - gray) * f) };
+    }
+    if (inst.kind === 'whites') {
+      const w = (inst.params as { value: number }).value;
+      if (w === 0) return { ...original };
+      const smoothstep = (edge0: number, edge1: number, x: number): number => {
+        const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+        return t * t * (3 - 2 * t);
+      };
+      const luminance = (0.299 * original.r + 0.587 * original.g + 0.114 * original.b) / 255;
+      const weight = smoothstep(0.4, 0.8, luminance);
+      const adjustment = w * weight;
+      return { r: clamp(original.r + adjustment), g: clamp(original.g + adjustment), b: clamp(original.b + adjustment) };
+    }
+    if (inst.kind === 'blacks') {
+      const b = (inst.params as { value: number }).value;
+      if (b === 0) return { ...original };
+      const smoothstep = (edge0: number, edge1: number, x: number): number => {
+        const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+        return t * t * (3 - 2 * t);
+      };
+      const luminance = (0.299 * original.r + 0.587 * original.g + 0.114 * original.b) / 255;
+      const weight = smoothstep(0.8, 0.2, luminance);
+      const adjustment = b * weight;
+      return { r: clamp(original.r + adjustment), g: clamp(original.g + adjustment), b: clamp(original.b + adjustment) };
     }
     // hue
     const deg = (inst.params as { hue: number }).hue;
@@ -534,7 +586,7 @@ export default function RGBCubeVisualizer({ mode, params, selectedRGB, showAllCh
     // Update previous params snapshot after rendering
     prevParamsRef.current = { ...params };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, paramsBrightness, paramsContrast, paramsSaturation, paramsVibrance, paramsHue, paramsLinearSaturation, selectedRGB, yaw, pitch, zoom, showAllChanges, lastChange, transformOrder, hasImage, pipeline, selectedInstanceId, isVisible]);
+  }, [mode, paramsBrightness, paramsContrast, paramsSaturation, paramsVibrance, paramsHue, paramsWhites, paramsBlacks, paramsLinearSaturation, selectedRGB, yaw, pitch, zoom, showAllChanges, lastChange, transformOrder, hasImage, pipeline, selectedInstanceId, isVisible]);
 
   // Arcball: convert screen coordinates to sphere coordinates
   function screenToSphere(x: number, y: number, rect: DOMRect): [number, number, number] | null {

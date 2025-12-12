@@ -1,6 +1,6 @@
 import { DndContext, closestCenter, DragEndEvent, KeyboardSensor, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Sun, Circle, Palette, Rainbow, Droplet, RotateCcw } from 'lucide-react';
+import { Sun, Circle, Palette, Rainbow, Droplet, RotateCcw, CircleDot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TransformationType, FilterKind, FilterInstance, formatValueFor, BlurParams, SharpenParams, EdgeParams, DenoiseParams, CustomConvParams } from '@/types/transformations';
 import {
@@ -35,6 +35,10 @@ interface AdjustmentLayerProps {
   setVibrance: (value: number) => void;
   hue: number;
   setHue: (value: number) => void;
+  whites: number;
+  setWhites: (value: number) => void;
+  blacks: number;
+  setBlacks: (value: number) => void;
   onResetAll: () => void;
   onCardClick?: (transformType: TransformationType) => void;
   onInstanceSelect?: (instanceId: string) => void;
@@ -54,6 +58,10 @@ const getIcon = (type: TransformationType) => {
       return <Droplet className="w-5 h-5" />;
     case 'hue':
       return <Rainbow className="w-5 h-5" />;
+    case 'whites':
+      return <CircleDot className="w-5 h-5" />;
+    case 'blacks':
+      return <Circle className="w-5 h-5" />;
   }
 };
 
@@ -69,11 +77,15 @@ const getTransformConfig = (type: TransformationType) => {
       return { min: -1, max: 1, step: 0.01, defaultValue: 0, formatValue: (v: number) => v >= 0 ? `+${v.toFixed(2)}` : `${v.toFixed(2)}` };
     case 'hue':
       return { min: -180, max: 180, step: 1, defaultValue: 0, formatValue: (v: number) => `${v > 0 ? '+' : ''}${v}°` };
+    case 'whites':
+      return { min: -100, max: 100, step: 1, defaultValue: 0, formatValue: (v: number) => v > 0 ? `+${v}` : `${v}` };
+    case 'blacks':
+      return { min: -100, max: 100, step: 1, defaultValue: 0, formatValue: (v: number) => v > 0 ? `+${v}` : `${v}` };
   }
 };
 
 type ValueProps = Pick<AdjustmentLayerProps,
-  'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue'
+  'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | 'whites' | 'blacks'
 >;
 
 const getValue = (type: TransformationType, props: ValueProps): number => {
@@ -83,11 +95,13 @@ const getValue = (type: TransformationType, props: ValueProps): number => {
     case 'saturation': return props.saturation;
     case 'vibrance': return props.vibrance;
     case 'hue': return props.hue;
+    case 'whites': return props.whites;
+    case 'blacks': return props.blacks;
   }
 };
 
 type SetterProps = Pick<AdjustmentLayerProps,
-  'setBrightness' | 'setContrast' | 'setSaturation' | 'setVibrance' | 'setHue'
+  'setBrightness' | 'setContrast' | 'setSaturation' | 'setVibrance' | 'setHue' | 'setWhites' | 'setBlacks'
 >;
 
 const getOnChange = (type: TransformationType, props: SetterProps): (value: number) => void => {
@@ -97,6 +111,8 @@ const getOnChange = (type: TransformationType, props: SetterProps): (value: numb
     case 'saturation': return props.setSaturation;
     case 'vibrance': return props.setVibrance;
     case 'hue': return props.setHue;
+    case 'whites': return props.setWhites;
+    case 'blacks': return props.setBlacks;
   }
 };
 
@@ -105,7 +121,9 @@ const TRANSFORM_LABELS: Record<TransformationType, string> = {
   contrast: 'Contrast',
   saturation: 'Saturation',
   vibrance: 'Vibrance',
-  hue: 'Hue Rotation'
+  hue: 'Hue Rotation',
+  whites: 'Whites',
+  blacks: 'Blacks'
 };
 
 export function AdjustmentLayer(props: AdjustmentLayerProps) {
@@ -168,6 +186,8 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
               <DropdownMenuItem onClick={() => onAddInstance('saturation')}>Saturation</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAddInstance('vibrance')}>Vibrance</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAddInstance('hue')}>Hue Rotation</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAddInstance('whites')}>Whites</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onAddInstance('blacks')}>Blacks</DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => onAddInstance('blur')}>Blur</DropdownMenuItem>
               <DropdownMenuItem onClick={() => onAddInstance('sharpen')}>Sharpen</DropdownMenuItem>
@@ -190,7 +210,7 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
             <div className="space-y-3">
               {props.pipeline.map((inst, index) => {
                 const kind = inst.kind;
-                const isVector: boolean = (kind === 'brightness' || kind === 'contrast' || kind === 'saturation' || kind === 'vibrance' || kind === 'hue');
+                const isVector: boolean = (kind === 'brightness' || kind === 'contrast' || kind === 'saturation' || kind === 'vibrance' || kind === 'hue' || kind === 'whites' || kind === 'blacks');
                 const config = isVector ? getTransformConfig(kind as TransformationType) : (
                   kind === 'blur'
                     ? { min: 0, max: 10, step: 0.1, defaultValue: 1, formatValue: (v: number) => `${v.toFixed(1)}` }
@@ -217,10 +237,9 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
                   : kind === 'denoise'
                   ? ((inst.params as DenoiseParams).strength ?? 0.5)
                   : (inst.params as { value: number }).value;
-                const label = (kind === 'brightness' || kind === 'contrast' || kind === 'saturation' || kind === 'vibrance' || kind === 'hue')
+                const label = (kind === 'brightness' || kind === 'contrast' || kind === 'saturation' || kind === 'vibrance' || kind === 'hue' || kind === 'whites' || kind === 'blacks')
                   ? TRANSFORM_LABELS[kind as TransformationType]
                   : kind === 'blur' ? 'Blur' : kind === 'sharpen' ? 'Sharpen' : kind === 'edge' ? 'Edge Detect' : kind === 'customConv' ? 'Custom Convolution' : 'Denoise';
-                const formattedNow = formatValueFor(inst.kind, inst.params);
                 // Reverse numbering: bottom item (last in array) gets 1, top item (first in array) gets highest number
                 const displayIndex = props.pipeline.length - index - 1;
                 return (
@@ -236,7 +255,7 @@ export function AdjustmentLayer(props: AdjustmentLayerProps) {
                     max={config.max}
                     step={config.step}
                     defaultValue={config.defaultValue}
-                    formatValue={() => formattedNow}
+                    formatValue={config.formatValue}
                     icon={isVector ? getIcon(kind as TransformationType) : undefined}
                     label={label}
                     onDelete={props.onDeleteInstance}

@@ -1,4 +1,4 @@
-export type TransformationType = 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue';
+export type TransformationType = 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | 'whites' | 'blacks';
 
 export interface RGB {
   r: number;
@@ -11,7 +11,9 @@ export const TRANSFORM_LABELS: Record<TransformationType, string> = {
   contrast: 'Contrast',
   saturation: 'Saturation',
   vibrance: 'Vibrance',
-  hue: 'Hue'
+  hue: 'Hue',
+  whites: 'Whites',
+  blacks: 'Blacks'
 };
 
 export const TRANSFORM_ICONS: Record<TransformationType, string> = {
@@ -19,7 +21,9 @@ export const TRANSFORM_ICONS: Record<TransformationType, string> = {
   contrast: 'CircleHalf',
   saturation: 'Palette',
   vibrance: 'Droplet',
-  hue: 'Rainbow'
+  hue: 'Rainbow',
+  whites: 'CircleDot',
+  blacks: 'Circle'
 };
 
 // Instance-based pipeline types (additive; keeps existing exports intact)
@@ -95,6 +99,10 @@ export function defaultParamsFor(kind: FilterKind): FilterParams {
       return { vibrance: 0 };
     case 'hue':
       return { hue: 0 };
+    case 'whites':
+      return { value: 0 };
+    case 'blacks':
+      return { value: 0 };
     case 'blur':
       return { kind: 'gaussian', size: 5, sigma: 1.0, stride: 1, padding: 'edge' } as BlurParams;
     case 'sharpen':
@@ -131,6 +139,10 @@ export function formatValueFor(kind: FilterKind, params: FilterParams): string {
   if (kind === 'hue') {
   const deg = (params as { hue: number }).hue;
   return `${deg > 0 ? '+' : ''}${deg}°`;
+  }
+  if (kind === 'whites' || kind === 'blacks') {
+    const v = (params as { value: number }).value;
+    return v > 0 ? `+${v}` : `${v}`;
   }
   if (kind === 'blur') {
     const p = params as BlurParams;
@@ -202,6 +214,18 @@ export const TRANSFORM_REGISTRY: Record<FilterKind, TransformRegistryItem> = {
     label: TRANSFORM_LABELS.hue,
     isPerPixel: false,
     defaults: () => ({ hue: 0 })
+  },
+  whites: {
+    kind: 'whites',
+    label: TRANSFORM_LABELS.whites,
+    isPerPixel: true,
+    defaults: () => ({ value: 0 })
+  },
+  blacks: {
+    kind: 'blacks',
+    label: TRANSFORM_LABELS.blacks,
+    isPerPixel: true,
+    defaults: () => ({ value: 0 })
   },
   blur: {
     kind: 'blur',

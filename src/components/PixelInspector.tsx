@@ -17,6 +17,8 @@ interface PixelInspectorProps {
   saturation: number;
   vibrance: number;
   hue: number;
+  whites?: number;
+  blacks?: number;
   cursorX: number;
   cursorY: number;
   linearSaturation?: boolean;
@@ -38,6 +40,8 @@ export function PixelInspector({
   saturation,
   vibrance,
   hue,
+  whites = 0,
+  blacks = 0,
   cursorX,
   cursorY,
   linearSaturation = false,
@@ -58,7 +62,9 @@ export function PixelInspector({
       contrast: 'Contrast',
       saturation: 'Saturation',
       vibrance: 'Vibrance',
-      hue: 'Hue'
+      hue: 'Hue',
+      whites: 'Whites',
+      blacks: 'Blacks'
     };
     return labels[type];
   };
@@ -70,6 +76,8 @@ export function PixelInspector({
       case 'saturation': return `×${saturation.toFixed(2)}`;
       case 'vibrance': return `${vibrance.toFixed(2)}`;
       case 'hue': return `${hue}°`;
+      case 'whites': return whites > 0 ? `+${whites}` : `${whites}`;
+      case 'blacks': return blacks > 0 ? `+${blacks}` : `${blacks}`;
     }
   };
 
@@ -135,6 +143,24 @@ export function PixelInspector({
       b: clamp(rgb.r * m[6] + rgb.g * m[7] + rgb.b * m[8]),
     };
   };
+  const smoothstep = (edge0: number, edge1: number, x: number): number => {
+    const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+    return t * t * (3 - 2 * t);
+  };
+  const applyWhitesLoc = (rgb: RGB): RGB => {
+    if (whites === 0) return rgb;
+    const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+    const weight = smoothstep(0.4, 0.8, luminance);
+    const adjustment = whites * weight;
+    return { r: clamp(rgb.r + adjustment), g: clamp(rgb.g + adjustment), b: clamp(rgb.b + adjustment) };
+  };
+  const applyBlacksLoc = (rgb: RGB): RGB => {
+    if (blacks === 0) return rgb;
+    const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+    const weight = smoothstep(0.8, 0.2, luminance);
+    const adjustment = blacks * weight;
+    return { r: clamp(rgb.r + adjustment), g: clamp(rgb.g + adjustment), b: clamp(rgb.b + adjustment) };
+  };
 
   const simulateUpToIndex = (targetIndex: number): RGB => {
     let color = originalRGB;
@@ -145,6 +171,8 @@ export function PixelInspector({
       else if (t === 'saturation') color = linearSaturation ? applySaturationLinearLoc(color, saturation, vibrance) : applySaturationLoc(color, saturation, vibrance);
       else if (t === 'vibrance') color = linearSaturation ? applySaturationLinearLoc(color, 1, vibrance) : applySaturationLoc(color, 1, vibrance);
       else if (t === 'hue') color = applyHueLoc(color);
+      else if (t === 'whites') color = applyWhitesLoc(color);
+      else if (t === 'blacks') color = applyBlacksLoc(color);
     }
     return color;
   };

@@ -14,6 +14,8 @@ interface ImageCanvasProps {
   contrast: number;
   saturation: number;
   hue: number;
+  whites?: number;
+  blacks?: number;
   // When true, compute saturation in linear-light space instead of gamma-encoded sRGB
   linearSaturation?: boolean;
   // Additional chroma boost for low-saturation colors (0..1 typical)
@@ -255,6 +257,42 @@ const applyVibranceLinear = (rgb: RGB, vibrance: number): RGB => {
   };
 };
 
+// Smoothstep function for smooth transitions
+const smoothstep = (edge0: number, edge1: number, x: number): number => {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+};
+
+// Apply whites adjustment - affects bright tones with smooth falloff
+const applyWhites = (rgb: RGB, value: number): RGB => {
+  if (value === 0) return rgb;
+  // Calculate luminance using Rec.601 weights (gamma-encoded approximation)
+  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+  // Smoothstep weight: high for bright tones (0.4-0.8 range), tapers to 0 for darker
+  const weight = smoothstep(0.4, 0.8, luminance);
+  const adjustment = value * weight;
+  return {
+    r: clamp(rgb.r + adjustment),
+    g: clamp(rgb.g + adjustment),
+    b: clamp(rgb.b + adjustment)
+  };
+};
+
+// Apply blacks adjustment - affects dark tones with smooth falloff
+const applyBlacks = (rgb: RGB, value: number): RGB => {
+  if (value === 0) return rgb;
+  // Calculate luminance using Rec.601 weights (gamma-encoded approximation)
+  const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+  // Smoothstep weight: high for dark tones (0.2-0.8 range, inverted), tapers to 0 for brighter
+  const weight = smoothstep(0.8, 0.2, luminance);
+  const adjustment = value * weight;
+  return {
+    r: clamp(rgb.r + adjustment),
+    g: clamp(rgb.g + adjustment),
+    b: clamp(rgb.b + adjustment)
+  };
+};
+
 // Compose multiple affine transformations into a single matrix + offset
 // For transformations that only have a matrix (no offset), pass offset: [0, 0, 0]
 // Composition: if y = M2 * (M1 * x + o1) + o2, then y = (M2 * M1) * x + (M2 * o1 + o2)
@@ -358,7 +396,7 @@ const applyHue = (rgb: RGB, value: number): RGB => {
   return applyMatrix(rgb, matrix);
 };
 
-export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanceId, brightness, contrast, saturation, hue, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true, onPixelSelect, onSelectConvAnalysis, previewOriginal = false, dechanneled = false }: ImageCanvasProps) {
+export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanceId, brightness, contrast, saturation, hue, whites = 0, blacks = 0, linearSaturation = false, vibrance = 0, transformOrder, enableInspector = true, onPixelSelect, onSelectConvAnalysis, previewOriginal = false, dechanneled = false }: ImageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rChannelRef = useRef<HTMLCanvasElement>(null);
   const gChannelRef = useRef<HTMLCanvasElement>(null);
@@ -372,6 +410,8 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
       case 'contrast': return contrast;
       case 'saturation': return saturation;
       case 'hue': return hue;
+      case 'whites': return whites;
+      case 'blacks': return blacks;
     }
   };
 
@@ -387,6 +427,8 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
         ? applyVibranceLinear(rgb, vibrance ?? 0)
         : applyVibrance(rgb, vibrance ?? 0);
       case 'hue': return applyHue(rgb, value);
+      case 'whites': return applyWhites(rgb, value);
+      case 'blacks': return applyBlacks(rgb, value);
     }
   };
 
@@ -429,7 +471,7 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
         const s = steps[batchEnd];
         const stype = s.type as TransformationType;
         const sval = (s as any).value as number;
-        const isPerPixel = stype === 'vibrance' || (stype === 'saturation' && linearSaturation);
+        const isPerPixel = stype === 'vibrance' || stype === 'whites' || stype === 'blacks' || (stype === 'saturation' && linearSaturation);
         if (isPerPixel) break;
         if (stype === 'brightness') matrixBatch.push(buildBrightnessMatrix(sval));
         else if (stype === 'contrast') matrixBatch.push(buildContrastMatrix(sval));
@@ -454,6 +496,10 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
             transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
           } else if (stype === 'saturation') {
             transformed = applySaturationLinear(rgb, sval);
+          } else if (stype === 'whites') {
+            transformed = applyWhites(rgb, sval);
+          } else if (stype === 'blacks') {
+            transformed = applyBlacks(rgb, sval);
           }
           data[j] = transformed.r;
           data[j+1] = transformed.g;
@@ -467,7 +513,7 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
       // Reverse pipeline so bottom item (brightness, last in array) is applied first
       for (const inst of [...pipeline].reverse()) {
         if (!inst.enabled) continue;
-        if (inst.kind === 'brightness' || inst.kind === 'contrast' || inst.kind === 'saturation' || inst.kind === 'hue' || inst.kind === 'vibrance') {
+        if (inst.kind === 'brightness' || inst.kind === 'contrast' || inst.kind === 'saturation' || inst.kind === 'hue' || inst.kind === 'vibrance' || inst.kind === 'whites' || inst.kind === 'blacks') {
           const kind = inst.kind;
           if (kind === 'brightness' || kind === 'contrast' || (kind === 'saturation' && !linearSaturation) || kind === 'hue') {
             // matrix-friendly; compose single
@@ -488,6 +534,8 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
               let transformed: RGB = rgb;
               if (kind === 'vibrance') transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
               if (kind === 'saturation') transformed = applySaturationLinear(rgb, sval);
+              if (kind === 'whites') transformed = applyWhites(rgb, sval);
+              if (kind === 'blacks') transformed = applyBlacks(rgb, sval);
               data[j] = transformed.r;
               data[j+1] = transformed.g;
               data[j+2] = transformed.b;
@@ -519,7 +567,7 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
     }
 
     ctx.putImageData(imageData, 0, 0);
-  }, [image, pipeline, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder, previewOriginal, dechanneled]);
+  }, [image, pipeline, brightness, contrast, saturation, hue, whites, blacks, linearSaturation, vibrance, transformOrder, previewOriginal, dechanneled]);
 
   // Render dechanneled view (3 RGB channel panels)
   useEffect(() => {
@@ -566,7 +614,7 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
             const s = steps[batchEnd];
             const stype = s.type as TransformationType;
             const sval = (s as any).value as number;
-            const isPerPixel = stype === 'vibrance' || (stype === 'saturation' && linearSaturation);
+            const isPerPixel = stype === 'vibrance' || stype === 'whites' || stype === 'blacks' || (stype === 'saturation' && linearSaturation);
             if (isPerPixel) break;
             if (stype === 'brightness') matrixBatch.push(buildBrightnessMatrix(sval));
             else if (stype === 'contrast') matrixBatch.push(buildContrastMatrix(sval));
@@ -591,6 +639,10 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
                 transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
               } else if (stype === 'saturation') {
                 transformed = applySaturationLinear(rgb, sval);
+              } else if (stype === 'whites') {
+                transformed = applyWhites(rgb, sval);
+              } else if (stype === 'blacks') {
+                transformed = applyBlacks(rgb, sval);
               }
               data[j] = transformed.r;
               data[j+1] = transformed.g;
@@ -603,7 +655,7 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
         // Instance-based path
         for (const inst of pipeline) {
           if (!inst.enabled) continue;
-          if (inst.kind === 'brightness' || inst.kind === 'contrast' || inst.kind === 'saturation' || inst.kind === 'hue' || inst.kind === 'vibrance') {
+          if (inst.kind === 'brightness' || inst.kind === 'contrast' || inst.kind === 'saturation' || inst.kind === 'hue' || inst.kind === 'vibrance' || inst.kind === 'whites' || inst.kind === 'blacks') {
             const kind = inst.kind;
             if (kind === 'brightness' || kind === 'contrast' || (kind === 'saturation' && !linearSaturation) || kind === 'hue') {
               const batch: Array<{ matrix: number[]; offset: number[] }> = [];
@@ -622,6 +674,8 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
                 let transformed: RGB = rgb;
                 if (kind === 'vibrance') transformed = linearSaturation ? applyVibranceLinear(rgb, sval) : applyVibrance(rgb, sval);
                 if (kind === 'saturation') transformed = applySaturationLinear(rgb, sval);
+                if (kind === 'whites') transformed = applyWhites(rgb, sval);
+                if (kind === 'blacks') transformed = applyBlacks(rgb, sval);
                 data[j] = transformed.r;
                 data[j+1] = transformed.g;
                 data[j+2] = transformed.b;
@@ -685,7 +739,7 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
     rCtx.putImageData(rData, 0, 0);
     gCtx.putImageData(gData, 0, 0);
     bCtx.putImageData(bData, 0, 0);
-  }, [dechanneled, image, pipeline, brightness, contrast, saturation, hue, linearSaturation, vibrance, transformOrder, previewOriginal]);
+  }, [dechanneled, image, pipeline, brightness, contrast, saturation, hue, whites, blacks, linearSaturation, vibrance, transformOrder, previewOriginal]);
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!enableInspector) return;
@@ -783,6 +837,12 @@ export function ImageCanvas({ image, pipeline, onSelectInstance, selectedInstanc
         } else if (inst.kind === 'hue') {
           const deg = (inst.params as { hue: number }).hue;
           output = applyHue(inputRGB, deg);
+        } else if (inst.kind === 'whites') {
+          const v = (inst.params as { value: number }).value;
+          output = applyWhites(inputRGB, v);
+        } else if (inst.kind === 'blacks') {
+          const v = (inst.params as { value: number }).value;
+          output = applyBlacks(inputRGB, v);
         } else if (inst.kind === 'blur') {
           const p = inst.params as BlurParams;
           const kernel = p.kind === 'gaussian' ? gaussianKernel(p.size, p.sigma) : boxKernel(p.size);

@@ -11,19 +11,242 @@ import { gaussianKernel, boxKernel, sobelKernels, prewittKernels, unsharpKernel 
 // Tabs removed; we render sections conditionally based on activeTab
 import { useEffect, useRef, useState, useMemo } from "react";
 
+// Smoothstep curve visualization component
+interface SmoothstepCurveProps {
+  edge0: number;
+  edge1: number;
+  currentLuminance: number;
+  adjustmentValue: number;
+}
+
+const SmoothstepCurve = ({ edge0, edge1, currentLuminance, adjustmentValue }: SmoothstepCurveProps) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const width = 600;
+  const height = 400;
+  const padding = { top: 50, right: 40, bottom: 60, left: 60 };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, width, height);
+
+    // Set up coordinate system
+    const plotWidth = width - padding.left - padding.right;
+    const plotHeight = height - padding.top - padding.bottom;
+    const xMin = 0;
+    const xMax = 1;
+    const yMin = 0;
+    const yMax = 1;
+
+    // Helper to convert x to canvas x
+    const toCanvasX = (x: number) => padding.left + ((x - xMin) / (xMax - xMin)) * plotWidth;
+    // Helper to convert y to canvas y (flipped because canvas y increases downward)
+    const toCanvasY = (y: number) => padding.top + plotHeight - ((y - yMin) / (yMax - yMin)) * plotHeight;
+
+    // Smoothstep function
+    const smoothstep = (edge0: number, edge1: number, x: number): number => {
+      const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+      return t * t * (3 - 2 * t);
+    };
+
+    // Draw grid lines
+    ctx.strokeStyle = '#e5e7eb';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 10; i++) {
+      const x = i / 10;
+      const canvasX = toCanvasX(x);
+      ctx.beginPath();
+      ctx.moveTo(canvasX, padding.top);
+      ctx.lineTo(canvasX, padding.top + plotHeight);
+      ctx.stroke();
+    }
+    for (let i = 0; i <= 10; i++) {
+      const y = i / 10;
+      const canvasY = toCanvasY(y);
+      ctx.beginPath();
+      ctx.moveTo(padding.left, canvasY);
+      ctx.lineTo(padding.left + plotWidth, canvasY);
+      ctx.stroke();
+    }
+
+    // Draw axes
+    ctx.strokeStyle = '#374151';
+    ctx.lineWidth = 2;
+    // X-axis
+    ctx.beginPath();
+    ctx.moveTo(padding.left, toCanvasY(0));
+    ctx.lineTo(padding.left + plotWidth, toCanvasY(0));
+    ctx.stroke();
+    // Y-axis
+    ctx.beginPath();
+    ctx.moveTo(toCanvasX(0), padding.top);
+    ctx.lineTo(toCanvasX(0), padding.top + plotHeight);
+    ctx.stroke();
+
+    // Draw smoothstep curve
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    const numPoints = 200;
+    for (let i = 0; i <= numPoints; i++) {
+      const x = i / numPoints;
+      const y = smoothstep(edge0, edge1, x);
+      const canvasX = toCanvasX(x);
+      const canvasY = toCanvasY(y);
+      if (i === 0) {
+        ctx.moveTo(canvasX, canvasY);
+      } else {
+        ctx.lineTo(canvasX, canvasY);
+      }
+    }
+    ctx.stroke();
+
+    // Draw edge markers
+    ctx.strokeStyle = '#9ca3af';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 5]);
+    // edge0
+    const edge0X = toCanvasX(edge0);
+    ctx.beginPath();
+    ctx.moveTo(edge0X, padding.top);
+    ctx.lineTo(edge0X, padding.top + plotHeight);
+    ctx.stroke();
+    // edge1
+    const edge1X = toCanvasX(edge1);
+    ctx.beginPath();
+    ctx.moveTo(edge1X, padding.top);
+    ctx.lineTo(edge1X, padding.top + plotHeight);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw current pixel position
+    const currentWeight = smoothstep(edge0, edge1, currentLuminance);
+    const currentX = toCanvasX(currentLuminance);
+    const currentY = toCanvasY(currentWeight);
+
+    // Draw vertical line to curve
+    ctx.strokeStyle = '#ef4444';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(currentX, padding.top + plotHeight);
+    ctx.lineTo(currentX, currentY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Draw horizontal line to curve
+    ctx.beginPath();
+    ctx.moveTo(padding.left, currentY);
+    ctx.lineTo(currentX, currentY);
+    ctx.stroke();
+
+    // Draw point on curve
+    ctx.fillStyle = '#ef4444';
+    ctx.beginPath();
+    ctx.arc(currentX, currentY, 6, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Draw formula at the top (split into two lines to fit)
+    ctx.fillStyle = '#374151';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const formulaY = 8;
+    ctx.fillText('smoothstep(x) = t² × (3 - 2t)', width / 2, formulaY);
+    ctx.fillText('where t = clamp((x - edge₀)/(edge₁ - edge₀), 0, 1)', width / 2, formulaY + 13);
+    
+    // Draw labels
+    ctx.fillStyle = '#374151';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    // X-axis label
+    ctx.fillText('Luminance (normalized)', width / 2, height - padding.bottom + 10);
+    // Y-axis label
+    ctx.save();
+    ctx.translate(25, height / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('Weight', 0, 0);
+    ctx.restore();
+
+    // Axis tick labels
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let i = 0; i <= 10; i++) {
+      const x = i / 10;
+      const canvasX = toCanvasX(x);
+      ctx.fillText(x.toFixed(1), canvasX, height - padding.bottom + 25);
+    }
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 10; i++) {
+      const y = i / 10;
+      const canvasY = toCanvasY(y);
+      ctx.fillText(y.toFixed(1), padding.left - 8, canvasY);
+    }
+
+    // Draw edge labels (positioned above X-axis label to avoid overlap)
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`edge0=${edge0.toFixed(1)}`, edge0X, padding.top + plotHeight - 2);
+    ctx.fillText(`edge1=${edge1.toFixed(1)}`, edge1X, padding.top + plotHeight - 2);
+
+    // Draw current pixel info (inside canvas bounds, positioned below formula)
+    ctx.fillStyle = '#ef4444';
+    ctx.font = 'bold 9px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const infoX = padding.left;
+    const infoY = 36; // Position below formula (8 + 13 + 15 spacing)
+    
+    // Use shorter labels to ensure they fit
+    const info1 = `L: ${currentLuminance.toFixed(3)}`;
+    const info2 = `W: ${currentWeight.toFixed(3)}`;
+    const info3 = `Adj: ${(adjustmentValue * currentWeight).toFixed(1)}`;
+    
+    ctx.fillText(info1, infoX, infoY);
+    ctx.fillText(info2, infoX, infoY + 12);
+    ctx.fillText(info3, infoX, infoY + 24);
+  }, [edge0, edge1, currentLuminance, adjustmentValue]);
+
+  return (
+    <div className="w-full overflow-hidden">
+      <canvas
+        ref={canvasRef}
+        width={width}
+        height={height}
+        className="border border-border rounded max-w-full"
+        style={{ maxWidth: '100%', height: 'auto' }}
+      />
+    </div>
+  );
+};
+
 interface MathExplanationProps {
   brightness: number;
   contrast: number;
   saturation: number;
   hue: number;
   vibrance?: number;
+  whites?: number;
+  blacks?: number;
   linearSaturation?: boolean;
   onToggleLinearSaturation?: (checked: boolean) => void;
   selectedRGB?: { r: number; g: number; b: number };
   // Provided by parent: which control was last changed
-  lastChange?: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue';
+  lastChange?: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | 'whites' | 'blacks';
   // Optional pipeline order for All Changes
-  transformOrder?: ('brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue')[];
+  transformOrder?: ('brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | 'whites' | 'blacks')[];
   // Instance-based pipeline support
   pipeline?: FilterInstance[];
   selectedInstanceId?: string | null;
@@ -41,9 +264,9 @@ interface MathExplanationProps {
   onActiveTabChange?: (tab: string) => void;
 }
 
-export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, pipeline, selectedInstanceId, hasImage, activeTab, onUpdateInstanceParams, convAnalysis, image, onActiveTabChange }: MathExplanationProps) {
-  const [localLastChange, setLocalLastChange] = useState<'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | undefined>(undefined);
-  const prevRef = useRef({ brightness, contrast, saturation, vibrance, hue });
+export function MathExplanation({ brightness, contrast, saturation, hue, vibrance = 0, whites = 0, blacks = 0, linearSaturation = false, onToggleLinearSaturation, selectedRGB, lastChange, transformOrder, pipeline, selectedInstanceId, hasImage, activeTab, onUpdateInstanceParams, convAnalysis, image, onActiveTabChange }: MathExplanationProps) {
+  const [localLastChange, setLocalLastChange] = useState<'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | 'whites' | 'blacks' | undefined>(undefined);
+  const prevRef = useRef({ brightness, contrast, saturation, vibrance, hue, whites, blacks });
   // Track selected color space from ColorPointCloud
   const [selectedColorSpace, setSelectedColorSpace] = useState<'rgb' | 'hsv' | 'hsl' | 'lab' | 'ycbcr'>('rgb');
   // Track input values for custom convolution kernel editing (keyed by instance ID and cell position)
@@ -65,15 +288,17 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
     else if (saturation !== prev.saturation) setLocalLastChange('saturation');
     else if (vibrance !== prev.vibrance) setLocalLastChange('vibrance');
     else if (hue !== prev.hue) setLocalLastChange('hue');
-    prevRef.current = { brightness, contrast, saturation, vibrance, hue };
-  }, [brightness, contrast, saturation, vibrance, hue]);
+    else if (whites !== prev.whites) setLocalLastChange('whites');
+    else if (blacks !== prev.blacks) setLocalLastChange('blacks');
+    prevRef.current = { brightness, contrast, saturation, vibrance, hue, whites, blacks };
+  }, [brightness, contrast, saturation, vibrance, hue, whites, blacks]);
 
   const effectiveLastChange = lastChange ?? localLastChange;
 
   // When using instance-based pipeline, prefer the selected instance's value
   const resolveFromPipeline = useMemo(() => {
     if (!pipeline || pipeline.length === 0) return {} as Record<string, number | undefined>;
-    const byKind = (kind: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue'): number | undefined => {
+    const byKind = (kind: 'brightness' | 'contrast' | 'saturation' | 'vibrance' | 'hue' | 'whites' | 'blacks'): number | undefined => {
       const selected = selectedInstanceId ? pipeline.find(p => p.id === selectedInstanceId && p.kind === kind) : undefined;
       const inst = selected ?? pipeline.find(p => p.kind === kind && p.enabled);
       if (!inst) return undefined;
@@ -87,6 +312,8 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
       saturation: byKind('saturation'),
       vibrance: byKind('vibrance'),
       hue: byKind('hue'),
+      whites: byKind('whites'),
+      blacks: byKind('blacks'),
     } as Record<string, number | undefined>;
   }, [pipeline, selectedInstanceId]);
 
@@ -95,6 +322,8 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
   const effSaturation = resolveFromPipeline.saturation ?? saturation;
   const effVibrance = resolveFromPipeline.vibrance ?? vibrance;
   const effHue = resolveFromPipeline.hue ?? hue;
+  const effWhites = resolveFromPipeline.whites ?? whites;
+  const effBlacks = resolveFromPipeline.blacks ?? blacks;
 
   // Memoize params objects to prevent unnecessary RGBCubeVisualizer recalculations
   const brightnessParams = useMemo(() => ({ brightness: effBrightness }), [effBrightness]);
@@ -102,7 +331,9 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
   const saturationParams = useMemo(() => ({ saturation: effSaturation, linearSaturation }), [effSaturation, linearSaturation]);
   const vibranceParams = useMemo(() => ({ vibrance: effVibrance, linearSaturation }), [effVibrance, linearSaturation]);
   const hueParams = useMemo(() => ({ hue: effHue }), [effHue]);
-  const allParams = useMemo(() => ({ brightness: effBrightness, contrast: effContrast, saturation: effSaturation, vibrance: effVibrance, hue: effHue, linearSaturation }), [effBrightness, effContrast, effSaturation, effVibrance, effHue, linearSaturation]);
+  const whitesParams = useMemo(() => ({ whites: effWhites }), [effWhites]);
+  const blacksParams = useMemo(() => ({ blacks: effBlacks }), [effBlacks]);
+  const allParams = useMemo(() => ({ brightness: effBrightness, contrast: effContrast, saturation: effSaturation, vibrance: effVibrance, hue: effHue, whites: effWhites, blacks: effBlacks, linearSaturation }), [effBrightness, effContrast, effSaturation, effVibrance, effHue, effWhites, effBlacks, linearSaturation]);
   const effectiveOrder: TransformationType[] | undefined = useMemo(() => {
     if (!pipeline) return transformOrder as TransformationType[] | undefined;
     // Reverse so bottom item (brightness, last in array) is first in order
@@ -221,6 +452,32 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
         b: clamp(rgb.r * m[6] + rgb.g * m[7] + rgb.b * m[8]),
       };
     };
+    const smoothstep = (edge0: number, edge1: number, x: number): number => {
+      const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+      return t * t * (3 - 2 * t);
+    };
+    const applyWhitesVec = (rgb: RGBVector, value: number): RGBVector => {
+      if (value === 0) return { ...rgb };
+      const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+      const weight = smoothstep(0.4, 0.8, luminance);
+      const adjustment = value * weight;
+      return {
+        r: clamp(rgb.r + adjustment),
+        g: clamp(rgb.g + adjustment),
+        b: clamp(rgb.b + adjustment),
+      };
+    };
+    const applyBlacksVec = (rgb: RGBVector, value: number): RGBVector => {
+      if (value === 0) return { ...rgb };
+      const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
+      const weight = smoothstep(0.8, 0.2, luminance);
+      const adjustment = value * weight;
+      return {
+        r: clamp(rgb.r + adjustment),
+        g: clamp(rgb.g + adjustment),
+        b: clamp(rgb.b + adjustment),
+      };
+    };
 
     const processStep = (key: string, kind: TransformationType, value: number | undefined, updater: (rgb: RGBVector) => RGBVector, current: RGBVector) => {
       const input = { ...current };
@@ -250,6 +507,12 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
         } else if (inst.kind === 'hue') {
           const v = (inst.params as { hue: number }).hue;
           current = processStep(inst.id, 'hue', v, (rgb) => applyHueVec(rgb, v), current);
+        } else if (inst.kind === 'whites') {
+          const v = (inst.params as { value: number }).value;
+          current = processStep(inst.id, 'whites', v, (rgb) => applyWhitesVec(rgb, v), current);
+        } else if (inst.kind === 'blacks') {
+          const v = (inst.params as { value: number }).value;
+          current = processStep(inst.id, 'blacks', v, (rgb) => applyBlacksVec(rgb, v), current);
         }
       }
     } else if (effectiveOrder && effectiveOrder.length > 0) {
@@ -264,12 +527,16 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
           current = processStep('vibrance', kind, effVibrance, (rgb) => linearSaturation ? applyVibranceLinear(rgb, effVibrance) : applyVibranceGamma(rgb, effVibrance), current);
         } else if (kind === 'hue') {
           current = processStep('hue', kind, effHue, (rgb) => applyHueVec(rgb, effHue), current);
+        } else if (kind === 'whites') {
+          current = processStep('whites', kind, effWhites, (rgb) => applyWhitesVec(rgb, effWhites), current);
+        } else if (kind === 'blacks') {
+          current = processStep('blacks', kind, effBlacks, (rgb) => applyBlacksVec(rgb, effBlacks), current);
         }
       }
     }
 
     return steps;
-  }, [pipeline, effectiveOrder, baseVector, linearSaturation, effBrightness, effContrast, effSaturation, effVibrance, effHue]);
+  }, [pipeline, effectiveOrder, baseVector, linearSaturation, effBrightness, effContrast, effSaturation, effVibrance, effHue, effWhites, effBlacks]);
 
   const contrastStep = useMemo(() => {
     const stepsForContrast = vectorSteps.filter(step => step.kind === 'contrast');
@@ -342,6 +609,18 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
             <Card className="p-4 border-border bg-card">
               <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube Rotation</h4>
               <RGBCubeVisualizer mode="hue" isVisible={activeTab === 'hue'} params={hueParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} transformOrder={effectiveOrder} pipeline={pipeline} selectedInstanceId={selectedId} />
+            </Card>
+          </div>
+          <div className={activeTab === 'whites' ? '' : 'hidden pointer-events-none'} aria-hidden={activeTab !== 'whites'}>
+            <Card className="p-4 border-border bg-card">
+              <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Whites (bright tone adjustment)</h4>
+              <RGBCubeVisualizer mode="whites" isVisible={activeTab === 'whites'} params={whitesParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} transformOrder={effectiveOrder} pipeline={pipeline} selectedInstanceId={selectedId} />
+            </Card>
+          </div>
+          <div className={activeTab === 'blacks' ? '' : 'hidden pointer-events-none'} aria-hidden={activeTab !== 'blacks'}>
+            <Card className="p-4 border-border bg-card">
+              <h4 className="text-sm font-semibold text-foreground mb-2">RGB Cube: Blacks (dark tone adjustment)</h4>
+              <RGBCubeVisualizer mode="blacks" isVisible={activeTab === 'blacks'} params={blacksParams} selectedRGB={selectedRGB} lastChange={effectiveLastChange} hasImage={hasImage} transformOrder={effectiveOrder} pipeline={pipeline} selectedInstanceId={selectedId} />
             </Card>
           </div>
         </div>
@@ -813,6 +1092,252 @@ export function MathExplanation({ brightness, contrast, saturation, hue, vibranc
               </div>
             </div>
           </Card>
+        </div>
+        )}
+
+        {activeTab === 'whites' && (
+        <div className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-foreground">Parametric Tone Curve (Bright Tones)</h3>
+            <p className="text-sm text-muted-foreground">
+              Whites adjustment applies a smooth parametric curve that primarily affects bright tones (high luminance values) with gradual falloff toward midtones. The adjustment strength is weighted by a smoothstep function based on the pixel's luminance.
+            </p>
+          </div>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Geometric intuition</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Bright pixels move along the gray diagonal (R=G=B) by an amount proportional to their luminance. The adjustment is strongest for very bright pixels and tapers smoothly to zero for darker tones, preserving shadow detail while allowing precise control over highlights.
+            </div>
+          </div>
+
+          <div className="bg-muted p-4 rounded-lg font-mono text-sm">
+            <div className="text-foreground">Original RGB Vector:</div>
+            <div className="text-primary mt-2">
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                return `[R, G, B] = [${Math.round(R)}, ${Math.round(G)}, ${Math.round(B)}]`;
+              })()}
+            </div>
+            
+            <div className="text-foreground mt-4">Calculate Luminance (Rec.601):</div>
+            <div className="text-primary mt-2">
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                const lum = 0.299 * R + 0.587 * G + 0.114 * B;
+                const lumNorm = lum / 255;
+                return `L = 0.299×${Math.round(R)} + 0.587×${Math.round(G)} + 0.114×${Math.round(B)} = ${lum.toFixed(1)} (normalized: ${lumNorm.toFixed(3)})`;
+              })()}
+            </div>
+
+            <div className="text-foreground mt-4">Smoothstep Weight:</div>
+            <div className="text-primary mt-2">
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                const lum = (0.299 * R + 0.587 * G + 0.114 * B) / 255;
+                const smoothstep = (edge0: number, edge1: number, x: number): number => {
+                  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+                  return t * t * (3 - 2 * t);
+                };
+                const weight = smoothstep(0.4, 0.8, lum);
+                return `weight = smoothstep(0.4, 0.8, ${lum.toFixed(3)}) = ${weight.toFixed(3)}`;
+              })()}
+            </div>
+
+            <div className="text-foreground mt-4">Apply Adjustment:</div>
+            <div className="text-primary mt-2">
+              adjustment = {effWhites} × weight
+            </div>
+
+            <div className="text-foreground mt-4">Result:</div>
+            <div className="text-secondary mt-2">
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                const lum = (0.299 * R + 0.587 * G + 0.114 * B) / 255;
+                const smoothstep = (edge0: number, edge1: number, x: number): number => {
+                  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+                  return t * t * (3 - 2 * t);
+                };
+                const weight = smoothstep(0.4, 0.8, lum);
+                const adjustment = effWhites * weight;
+                const Rp = Math.max(0, Math.min(255, R + adjustment));
+                const Gp = Math.max(0, Math.min(255, G + adjustment));
+                const Bp = Math.max(0, Math.min(255, B + adjustment));
+                return `[R', G', B'] = [${Rp.toFixed(0)}, ${Gp.toFixed(0)}, ${Bp.toFixed(0)}]`;
+              })()}
+            </div>
+          </div>
+
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-muted-foreground">
+              For every pixel (r, g, b):
+            </div>
+            <div className="text-primary font-mono mt-2">
+              L = (0.299×r + 0.587×g + 0.114×b) / 255<br/>
+              t = clamp((L - 0.4) / (0.8 - 0.4), 0, 1)<br/>
+              weight = t² × (3 - 2×t)<br/>
+              adjustment = whites × weight<br/>
+              r' = clamp(r + adjustment)<br/>
+              g' = clamp(g + adjustment)<br/>
+              b' = clamp(b + adjustment)
+            </div>
+            <div className="text-muted-foreground mt-3 text-xs">
+              The smoothstep function creates a smooth S-curve transition. Pixels with L &lt; 0.4 get minimal adjustment (weight ≈ 0), pixels with L &gt; 0.8 get full adjustment (weight ≈ 1), and pixels in between get a smooth transition.
+            </div>
+          </div>
+
+          {/* Smoothstep Curve Visualization */}
+          <Card className="p-4 border-border bg-card">
+            <h4 className="text-sm font-semibold text-foreground mb-3">Smoothstep Weight Function</h4>
+            <SmoothstepCurve
+              edge0={0.4}
+              edge1={0.8}
+              currentLuminance={(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                return (0.299 * R + 0.587 * G + 0.114 * B) / 255;
+              })()}
+              adjustmentValue={effWhites}
+            />
+          </Card>
+
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">What this means</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Whites adjustment targets bright tones while preserving shadow detail. Positive values brighten highlights, potentially pushing them toward pure white (clipping). Negative values recover detail in bright areas by darkening them. The smoothstep weighting ensures smooth transitions without harsh breaks, similar to Lightroom's Whites slider behavior.
+            </div>
+          </div>
+        </div>
+        )}
+
+        {activeTab === 'blacks' && (
+        <div className="space-y-4 mt-4">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-foreground">Parametric Tone Curve (Dark Tones)</h3>
+            <p className="text-sm text-muted-foreground">
+              Blacks adjustment applies a smooth parametric curve that primarily affects dark tones (low luminance values) with gradual falloff toward midtones. The adjustment strength is weighted by an inverted smoothstep function based on the pixel's luminance.
+            </p>
+          </div>
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">Geometric intuition</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Dark pixels move along the gray diagonal (R=G=B) by an amount proportional to their darkness. The adjustment is strongest for very dark pixels and tapers smoothly to zero for brighter tones, preserving highlight detail while allowing precise control over shadows.
+            </div>
+          </div>
+
+          <div className="bg-muted p-4 rounded-lg font-mono text-sm">
+            <div className="text-foreground">Original RGB Vector:</div>
+            <div className="text-primary mt-2">
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                return `[R, G, B] = [${Math.round(R)}, ${Math.round(G)}, ${Math.round(B)}]`;
+              })()}
+            </div>
+            
+            <div className="text-foreground mt-4">Calculate Luminance (Rec.601):</div>
+            <div className="text-primary mt-2">
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                const lum = 0.299 * R + 0.587 * G + 0.114 * B;
+                const lumNorm = lum / 255;
+                return `L = 0.299×${Math.round(R)} + 0.587×${Math.round(G)} + 0.114×${Math.round(B)} = ${lum.toFixed(1)} (normalized: ${lumNorm.toFixed(3)})`;
+              })()}
+            </div>
+
+            <div className="text-foreground mt-4">Smoothstep Weight (inverted):</div>
+            <div className="text-primary mt-2">
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                const lum = (0.299 * R + 0.587 * G + 0.114 * B) / 255;
+                const smoothstep = (edge0: number, edge1: number, x: number): number => {
+                  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+                  return t * t * (3 - 2 * t);
+                };
+                const weight = smoothstep(0.8, 0.2, lum);
+                return `weight = smoothstep(0.8, 0.2, ${lum.toFixed(3)}) = ${weight.toFixed(3)}`;
+              })()}
+            </div>
+
+            <div className="text-foreground mt-4">Apply Adjustment:</div>
+            <div className="text-primary mt-2">
+              adjustment = {effBlacks} × weight
+            </div>
+
+            <div className="text-foreground mt-4">Result:</div>
+            <div className="text-secondary mt-2">
+              {(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                const lum = (0.299 * R + 0.587 * G + 0.114 * B) / 255;
+                const smoothstep = (edge0: number, edge1: number, x: number): number => {
+                  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+                  return t * t * (3 - 2 * t);
+                };
+                const weight = smoothstep(0.8, 0.2, lum);
+                const adjustment = effBlacks * weight;
+                const Rp = Math.max(0, Math.min(255, R + adjustment));
+                const Gp = Math.max(0, Math.min(255, G + adjustment));
+                const Bp = Math.max(0, Math.min(255, B + adjustment));
+                return `[R', G', B'] = [${Rp.toFixed(0)}, ${Gp.toFixed(0)}, ${Bp.toFixed(0)}]`;
+              })()}
+            </div>
+          </div>
+
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-muted-foreground">
+              For every pixel (r, g, b):
+            </div>
+            <div className="text-primary font-mono mt-2">
+              L = (0.299×r + 0.587×g + 0.114×b) / 255<br/>
+              t = clamp((L - 0.8) / (0.2 - 0.8), 0, 1)<br/>
+              weight = t² × (3 - 2×t)<br/>
+              adjustment = blacks × weight<br/>
+              r' = clamp(r + adjustment)<br/>
+              g' = clamp(g + adjustment)<br/>
+              b' = clamp(b + adjustment)
+            </div>
+            <div className="text-muted-foreground mt-3 text-xs">
+              The inverted smoothstep function (edge0=0.8, edge1=0.2) creates a smooth S-curve that's high for dark pixels and low for bright pixels. Pixels with L &lt; 0.2 get full adjustment (weight ≈ 1), pixels with L &gt; 0.8 get minimal adjustment (weight ≈ 0), and pixels in between get a smooth transition.
+            </div>
+          </div>
+
+          {/* Smoothstep Curve Visualization */}
+          <Card className="p-4 border-border bg-card">
+            <h4 className="text-sm font-semibold text-foreground mb-3">Smoothstep Weight Function (Inverted)</h4>
+            <SmoothstepCurve
+              edge0={0.8}
+              edge1={0.2}
+              currentLuminance={(() => {
+                const R = selectedRGB?.r ?? 200;
+                const G = selectedRGB?.g ?? 150;
+                const B = selectedRGB?.b ?? 100;
+                return (0.299 * R + 0.587 * G + 0.114 * B) / 255;
+              })()}
+              adjustmentValue={effBlacks}
+            />
+          </Card>
+
+          <div className="bg-muted p-4 rounded-lg text-sm">
+            <div className="text-foreground font-semibold">What this means</div>
+            <div className="text-muted-foreground mt-2 text-xs">
+              Blacks adjustment targets dark tones while preserving highlight detail. Positive values lift shadows, recovering detail in dark areas. Negative values deepen shadows, potentially crushing them to pure black. The inverted smoothstep weighting ensures smooth transitions without harsh breaks, similar to Lightroom's Blacks slider behavior.
+            </div>
+          </div>
         </div>
         )}
 
